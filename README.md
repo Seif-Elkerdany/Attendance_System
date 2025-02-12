@@ -8,7 +8,7 @@
 
 ## Features
 
-- This system is designed to take attendance for any course in university.
+- This system is designed to take attendance for any course in the university.
 - It is designed to just add 2 or more images for the students enrolled in this course and it will easily take attendance.
 - You can use it by uploading image that contains the students attended the lecture or by scaning faces of students by looking at the camera.
 - This project is done using Siamese Neural Network "SNN" to compare the currently captured image and the images in enrolled folder.
