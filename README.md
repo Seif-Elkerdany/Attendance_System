@@ -3,7 +3,7 @@
 ## Our Team
 - Ammar Yasser &emsp;&emsp;     **(Team member)**   &emsp;*AIU* 
 - Jamal Khaled &emsp;&emsp;&ensp;     **(Team member)** &emsp;*AIU* 
-- Seif Elkerdany &emsp;&emsp;     **(Team leader)** &emsp;&ensp;&nbsp; *AIU* 
+- Seif Elkerdany &emsp;&emsp;&ensp;    **(Team leader)** &emsp;&ensp;&nbsp; *AIU* 
 - Shrouq Waleed &emsp;&emsp;       **(Team member)**&emsp; *AIU* 
 
 ## Features
