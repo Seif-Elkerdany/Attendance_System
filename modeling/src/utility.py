@@ -1,7 +1,9 @@
 # modules
 import os
 from tqdm import tqdm
-
+import random
+import matplotlib.pyplot as plt
+import cv2
 
 class datacleaner:
     """
@@ -11,6 +13,9 @@ class datacleaner:
 
     The functions are:
         1) extention_checker
+        2) sample_plot
+        3) blur_detector
+        4) check_blur_in_folder
     """
 
     def extention_checker(folder_path):
@@ -43,3 +48,115 @@ class datacleaner:
         print("Number of non-JPG images found:", len(non_jpg_images))
 
         return non_jpg_images
+
+    def sample_plot(folder_path):
+        """
+        This function takes the path to an image folder and plots 9 random images from this folder.
+        
+        Parameters:
+            folder_path (str): Path to the folder containing images.
+        """
+        
+        # Get a list of image files in the folder
+        image_files = [f for f in os.listdir(folder_path) if f.lower().endswith(('.jpg', '.jpeg'))]
+
+        # Checks if the folder is empty
+        if len(image_files) == 0:
+            print("No images found in the folder.")
+            return
+    
+        # Select 9 random images 
+        sample_images = random.sample(image_files, min(9, len(image_files)))
+    
+        # Create a 3x3 subplot
+        fig, axes = plt.subplots(3, 3, figsize=(10, 10))
+    
+        for ax, img_file in zip(axes.flatten(), sample_images):
+            img_path = os.path.join(folder_path, img_file)
+            img = cv2.imread(img_path)  # Read the image
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert to RGB 
+            ax.imshow(img)
+            ax.set_title(img_file, fontsize=10)
+            ax.axis('off')  # Hide axes
+    
+        plt.tight_layout()
+        plt.show()
+
+    def blur_detector(img_path):
+        """
+        This function calculates the variance of the Laplacian of the image to determine its sharpness.
+    
+        The Laplacian operator detects edges by computing the second derivative of the image. 
+        OpenCV typically uses a 3x3 Laplacian kernel:
+        
+            [[ 1,  1,  1],
+             [ 1, -8,  1],
+             [ 1,  1,  1]]
+        
+        For more information, refer to the OpenCV documentation.
+    
+        Parameters:
+            img_path (str): Path to the image file.
+        
+        Returns:
+            float or None: The variance of the Laplacian, where lower values indicate more blur.
+                           Returns None if the image cannot be loaded.
+        """
+        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)  # Read as grayscale
+        if img is None:
+            return None  # Handle error without printing
+    
+        variance = cv2.Laplacian(img, cv2.CV_64F).var()  # Compute Laplacian variance
+        return variance
+
+    def check_blur_in_folder(folder_path):
+        """
+        This function calculates the blur score for all images in a folder,
+        sorts them by sharpness, and plots the 5 most blurry and 5 sharpest images.
+    
+        Parameters:
+            folder_path (str): Path to the folder containing images.
+        """
+        blur_scores = {}  # Dictionary to store image names and their blur scores
+        
+        # Iterate over all files in the folder
+        for file in os.listdir(folder_path):
+            img_path = os.path.join(folder_path, file)  # Get the full path of the image
+            blur_score = datacleaner.blur_detector(img_path)  # Compute blur score using Laplacian variance
+            
+            if blur_score is not None:  # Ensure the image was processed correctly
+                blur_scores[file] = blur_score  # Store the blur score
+    
+        # Sort images by blur score (low values = blurry images)
+        sorted_blur = sorted(blur_scores.items(), key=lambda x: x[1])  
+    
+        # Get the 5 most blurry and 5 sharpest images
+        most_blurry = sorted_blur[:5]  # 5 images with the lowest blur score
+        sharpest = sorted_blur[-5:]  # 5 images with the highest blur score
+    
+        # Plot the 5 most blurry images
+        plt.figure(figsize=(12, 6))
+        for i, (img_name, _) in enumerate(most_blurry):
+            img_path = os.path.join(folder_path, img_name)  # Load image path
+            img = cv2.imread(img_path)  # Read the image
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert to RGB (OpenCV loads in BGR)
+    
+            plt.subplot(2, 5, i + 1)  # Create subplot
+            plt.imshow(img)
+            plt.title(f"Blurry")  # Image title
+            plt.axis("off")  # Hide axes
+    
+        # Plot the 5 sharpest images
+        for i, (img_name, _) in enumerate(sharpest):
+            img_path = os.path.join(folder_path, img_name)  # Load image path
+            img = cv2.imread(img_path)  # Read the image
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert to RGB
+            
+            plt.subplot(2, 5, i + 6)  # Create subplot for sharp images
+            plt.imshow(img)
+            plt.title(f"Sharp")  # Image title
+            plt.axis("off")  # Hide axes
+    
+        plt.suptitle("Blurry vs. Sharp Images", fontsize=16)  # Main title
+        plt.tight_layout()  # Adjust layout for better visualization
+        plt.show()  # Display the images
