@@ -55,5 +55,5 @@
 - ### 4. Deploying as desktop application
 
 ## Future updates
-- Quantize and optimize the pipeline to work on Edge devices.
+- Optimize the pipeline to work on Edge devices.
 - Increase the model accuracy to integrate it with the university system.
