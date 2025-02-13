@@ -1,1 +1,45 @@
-{"metadata":{"kernelspec":{"language":"python","display_name":"Python 3","name":"python3"},"language_info":{"pygments_lexer":"ipython3","nbconvert_exporter":"python","version":"3.6.4","file_extension":".py","codemirror_mode":{"name":"ipython","version":3},"name":"python","mimetype":"text/x-python"},"kaggle":{"accelerator":"none","dataSources":[],"isInternetEnabled":true,"language":"python","sourceType":"script","isGpuEnabled":false}},"nbformat_minor":4,"nbformat":4,"cells":[{"cell_type":"code","source":"# modules\nimport os\nfrom tqdm import tqdm\n\n\nclass datacleaner:\n    \"\"\"\n    In this class I will put all the functions We will need for cleaning all the datasets.\n\n    You can upload this file on kaggle and import from it what you need easily.\n\n    The functions are:\n        1) extention_checker\n    \"\"\"\n\n    def extention_checker(folder_path):\n        \"\"\"\n        This function takes the path of the folder contains the images and check how many images are .jpg and the non-jpg images\n        also it returns the path of each non-jpg image.\n\n        parameters:\n            folder_path (String): the path of the folder.\n        returns:\n            list contains the path of non-jpg images.\n        \"\"\"\n\n        # List to store non-JPG image paths\n        non_jpg_images = []\n        jpg_counter = 0     # counter to count the jpg images in the folder\n\n        # Iterate through files in the folder\n        for filename in tqdm(os.listdir(folder_path)):\n            file_path = os.path.join(folder_path, filename)\n            if os.path.isfile(file_path):  # Check if it's a file\n                ext = os.path.splitext(filename)[1].lower()  # Get file extension\n                if ext != \".jpg\":\n                    non_jpg_images.append(file_path)  # Add to list if not JPG\n                else:\n                    jpg_counter += 1    # Add 1 to the jpg_counter if it is .jpg\n\n        # Print the result\n        print(\"Number of JPG images found:\", jpg_counter)\n        print(\"Number of non-JPG images found:\", len(non_jpg_images))\n\n        return non_jpg_images\n","metadata":{"_uuid":"912f26e0-266c-493e-9605-4350fffe3bac","_cell_guid":"b06602cd-c259-4d7e-9b1e-6eea2d03c5bd","trusted":true,"collapsed":false,"jupyter":{"outputs_hidden":false}},"outputs":[],"execution_count":null}]}
+# modules
+import os
+from tqdm import tqdm
+
+
+class datacleaner:
+    """
+    In this class I will put all the functions We will need for cleaning all the datasets.
+
+    You can upload this file on kaggle and import from it what you need easily.
+
+    The functions are:
+        1) extention_checker
+    """
+
+    def extention_checker(folder_path):
+        """
+        This function takes the path of the folder contains the images and check how many images are .jpg and the non-jpg images
+        also it returns the path of each non-jpg image.
+
+        parameters:
+            folder_path (String): the path of the folder.
+        returns:
+            list contains the path of non-jpg images.
+        """
+
+        # List to store non-JPG image paths
+        non_jpg_images = []
+        jpg_counter = 0     # counter to count the jpg images in the folder
+
+        # Iterate through files in the folder
+        for filename in tqdm(os.listdir(folder_path)):
+            file_path = os.path.join(folder_path, filename)
+            if os.path.isfile(file_path):  # Check if it's a file
+                ext = os.path.splitext(filename)[1].lower()  # Get file extension
+                if ext != ".jpg":
+                    non_jpg_images.append(file_path)  # Add to list if not JPG
+                else:
+                    jpg_counter += 1    # Add 1 to the jpg_counter if it is .jpg
+
+        # Print the result
+        print("Number of JPG images found:", jpg_counter)
+        print("Number of non-JPG images found:", len(non_jpg_images))
+
+        return non_jpg_images
