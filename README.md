@@ -20,17 +20,21 @@
         -  Different face reactions.
         -  Different light conditions.
         -  Every student must submit minimum 2 photos and maximum 5 images.
-    -   ##### 1.2 Data Cleaning
-        - Delete non-related images.
-        - Delete corrupted images.
+    -   ##### 1.2 Explore the Data
+        - Know more about the data.
+        - The number of images.
+        - The brightness of the images.
+        - The sharpness and the quality of the images.
     -   ##### 1.3 Face detection and cropping
         - Using MTCNN "TensorFlow".
     -   ##### 1.4 Data preprocessing
         - Resize images.
         - Use greyscale images.
         - Remove noise from images.
+        - Normalize the brightness.
     -   ##### 1.5 Generate pairs for training
         - Organize images in a directory.
+        - Split the dataset into train, test and validation.
         - Create PyTorch dataset class.
 - ### 2. Siamese Neural Network
     - ##### 2.1 Model architecture
