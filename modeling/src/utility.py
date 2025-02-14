@@ -4,6 +4,7 @@ from tqdm import tqdm
 import random
 import matplotlib.pyplot as plt
 import cv2
+import numpy as np
 
 class datacleaner:
     """
@@ -16,6 +17,8 @@ class datacleaner:
         2) sample_plot
         3) blur_detector
         4) check_blur_in_folder
+        5) compute_brightness
+        6) check_brightness_in_folder
     """
 
     def extention_checker(folder_path):
@@ -116,6 +119,9 @@ class datacleaner:
     
         Parameters:
             folder_path (str): Path to the folder containing images.
+
+        Returns:
+            tuple contains most_blurry, sharpest
         """
         blur_scores = {}  # Dictionary to store image names and their blur scores
         
@@ -160,3 +166,57 @@ class datacleaner:
         plt.suptitle("Blurry vs. Sharp Images", fontsize=16)  # Main title
         plt.tight_layout()  # Adjust layout for better visualization
         plt.show()  # Display the images
+
+        return most_blurry, sharpest
+
+    def compute_brightness(img_path):
+        """
+        Calculates the mean brightness of an image using the HSV color space.
+        
+        Parameters:
+            img_path (str): Path to the image file.
+        
+        Returns:
+            float: The mean brightness value (0-255).
+        """
+        img = cv2.imread(img_path)  # Read image
+        if img is None:
+            return None  # Handle unreadable files
+    
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)  # Convert to HSV
+        brightness = np.mean(hsv[:, :, 2])  # Extract V channel (brightness) and compute mean
+        return brightness
+    
+    def check_brightness_in_folder(folder_path):
+        """
+        Computes brightness for all images in a folder and plots the distribution.
+    
+        Parameters:
+            folder_path (str): Path to the folder containing images.
+
+        Returns:
+            sorted_brightness (list): List contains all sorted images
+        """
+        brightness_scores = {}  # Store brightness values
+    
+        for file in os.listdir(folder_path):
+            img_path = os.path.join(folder_path, file)
+            brightness = datacleaner.compute_brightness(img_path)
+            
+            if brightness is not None:
+                brightness_scores[file] = brightness
+    
+        # Sort images by brightness
+        sorted_brightness = sorted(brightness_scores.items(), key=lambda x: x[1])
+    
+        # Plot brightness distribution
+        plt.figure(figsize=(8, 5))
+        plt.hist(list(brightness_scores.values()), bins=30, color='blue', alpha=0.7)
+        plt.axvline(x=np.mean(list(brightness_scores.values())), color='red', linestyle='dashed', label='Mean Brightness')
+        plt.xlabel("Brightness Level (0-255)")
+        plt.ylabel("Number of Images")
+        plt.title("Brightness Distribution of Images")
+        plt.legend()
+        plt.show()
+
+        return sorted_brightness
