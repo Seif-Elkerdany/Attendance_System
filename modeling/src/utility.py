@@ -5,6 +5,7 @@ import random
 import matplotlib.pyplot as plt
 import cv2
 import numpy as np
+from mtcnn import MTCNN
 
 class datacleaner:
     """
@@ -220,3 +221,64 @@ class datacleaner:
         plt.show()
 
         return sorted_brightness
+    
+    def has_face(self, image_path):
+        """
+        Check if an image contains a face using MTCNN.
+        image_path: Path to the image file.
+        return: True if a face is detected, False otherwise.
+        """
+        try:
+            # Load the image and convert to RGB
+            image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
+            # Detect faces using MTCNN
+            detector = MTCNN()
+            results = detector.detect_faces(image)
+            return len(results) > 0  # Return True if at least one face is detected
+        except:
+            # Skip if the image cannot be processed
+            return False
+
+    def filter_non_face_images(self, dataset_dir):
+        """
+        Remove images that do not contain faces and visualize a sample of them.
+        dataset_dir: Path to the dataset directory.
+        """
+       
+        non_face = []  # Store non-face image paths
+        total_images = 0
+        
+        for root, _, files in os.walk(dataset_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                total_images += 1
+                if not self.has_face(file_path):
+                    non_face.append(file_path)  # Store for visualization
+    
+        # Randomly select up to 9 images
+        random.shuffle(non_face)
+        sample_images = non_face[:9]  # Take at most 9 images
+    
+        # Visualize if there are images to display
+        if sample_images:
+            fig, axes = plt.subplots(3, 3, figsize=(10, 10))
+            axes = axes.flatten()
+    
+            for i, img_path in enumerate(sample_images):
+                image = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB)
+                axes[i].imshow(image)
+                axes[i].set_title(f"Non-Face {i+1}")
+                axes[i].axis("off")
+    
+            # Hide unused subplots if fewer than 9 images
+            for j in range(len(sample_images), 9):
+                axes[j].axis("off")
+    
+            plt.show()
+    
+        # Remove all non-face images
+        for img_path in non_face:
+            print(f"Removing non-face image: {img_path}")
+            os.remove(img_path)
+        
+        print(f"{len(non_face)} non face image out of " )
