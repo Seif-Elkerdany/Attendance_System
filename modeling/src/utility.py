@@ -4,6 +4,7 @@ from tqdm import tqdm
 import random
 import matplotlib.pyplot as plt
 import cv2
+from PIL import Image
 import numpy as np
 
 class datacleaner:
@@ -220,3 +221,60 @@ class datacleaner:
         plt.show()
 
         return sorted_brightness
+    
+    def normalize_brightness(image_path):
+        """
+        Normalizes the brightness of an image using histogram equalization.
+        Converts the image to grayscale after normalization.
+
+        Args:
+            image_path (str): Path to the image.
+
+        Returns:
+            PIL Image: Brightness-normalized grayscale image.
+        """
+        img = cv2.imread(image_path) 
+        if img is None:
+            print(f"Skipping: {image_path} (Invalid image file)")
+            return None
+
+        img_lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)  # Convert to LAB color space
+        l, a, b = cv2.split(img_lab)  # Split LAB channels
+
+        # Apply histogram equalization to the L (lightness) channel
+        l_eq = cv2.equalizeHist(l)
+        img_lab_eq = cv2.merge((l_eq, a, b))
+
+        # Convert back to BGR color space
+        img_eq = cv2.cvtColor(img_lab_eq, cv2.COLOR_LAB2BGR)
+
+        # Convert to grayscale
+        img_gray = cv2.cvtColor(img_eq, cv2.COLOR_BGR2GRAY)
+
+        return Image.fromarray(img_gray)  # Convert to PIL Image
+    
+    def process_and_overwrite_images(image_folder):
+        """
+        Processes all images in a folder:
+        - Normalizes brightness
+        - Converts to grayscale
+        - Overwrites original image files
+
+        Args:
+            image_folder (str): Path to the folder containing images.
+        """
+        valid_extensions = (".jpg", ".jpeg", ".png")
+        image_list = [img for img in os.listdir(image_folder) if img.lower().endswith(valid_extensions)]
+
+        if not image_list:
+            print("Error: No valid images found!")
+            return
+
+        for img_name in tqdm(image_list):
+            img_path = os.path.join(image_folder, img_name)
+
+            # Process image
+            img_processed = datacleaner.normalize_brightness(img_path)
+            if img_processed is not None:
+                # Overwrite the original image
+                img_processed.save(img_path)
