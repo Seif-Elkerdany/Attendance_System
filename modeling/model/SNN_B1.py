@@ -240,7 +240,7 @@ if __name__ == '__main__':
 
     # M7dsh y5af da bs 3l4an lw 3aizen t3mlo run mn el terminal xD
     # Argument Parser for Terminal Execution
-    parser = argparse.ArgumentParser(description="Train a Siamese network for face verification.")
+    parser = argparse.ArgumentParser(description="Train a Siamese network for face verification for our Attendace System.")
     parser.add_argument("--batch_size", type=int, default=16, help="Number of image pairs per batch.")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of workers for dataloader.")
     parser.add_argument("--num_epochs", type=int, default=20, help="Maximum number of training epochs.")
