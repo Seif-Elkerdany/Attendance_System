@@ -45,13 +45,9 @@ class SiameseDataset(Dataset):
         # Define a simple augmentation pipeline for grayscale images
         # This pipeline will be applied with a probability of 0.3
         self.augment = T.RandomApply(
-           T.Compose([
-               RandomAffineWithSameParams(), 
-               RandomBrightnessContrast(brightness=0.3, contrast=0.3)
-               # T.RandomApply([T.GaussianBlur(kernel_size=3)], p=0.5),
-           ]),
-           p=0.3
-       )
+                        [RandomAffineWithSameParams(), RandomBrightnessContrast(brightness=0.3, contrast=0.3)],
+                        p=0.3
+                        )
     def __len__(self):
         return len(self.data)
 
@@ -81,7 +77,7 @@ class SiameseDataset(Dataset):
         """Load and preprocess a single image."""
         img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
         img = cv2.resize(img, (112, 112), interpolation=cv2.INTER_AREA)
-        return TF.to_tensor(img)
+        return TF.to_tensor(img).repeat(3, 1, 1)
 
     def _apply_augmentations(self, img, seed=None):
         """Apply augmentations with an optional seed for reproducibility."""
