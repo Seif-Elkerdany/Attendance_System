@@ -12,6 +12,10 @@ import seaborn as sns
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 import argparse
 import warnings
+from torch.utils.data import DataLoader
+import pandas as pd
+from SiameseDataset import SiameseDataset
+from sklearn.model_selection import train_test_split
 warnings.filterwarnings("ignore")
 
 
@@ -81,8 +85,8 @@ class MarginCosineLoss(nn.Module):
         return torch.mean(loss)
 
 
-def train_siamese_network(input_shape=(3, 112, 112),
-                          batch_size=16,
+def train_siamese_network(train_dataloader,
+                          val_dataloader,
                           num_epochs=20,
                           learning_rate=0.001,
                           num_train_batches=100,
@@ -96,26 +100,19 @@ def train_siamese_network(input_shape=(3, 112, 112),
     Trains a Siamese network for face verification using a fine-tuned ViT-B-16 backbone and a margin cosine loss.
     
     Parameters:
-      input_shape (tuple): Shape of input images (channels, height, width). Default: (3, 112, 112).
-      batch_size (int): Number of image pairs per batch.
+      train_dataloader (DataLoader): Dataloader for training data.
+      val_dataloader (DataLoader): Dataloader for validation data.
       num_epochs (int): Maximum number of epochs for training.
       learning_rate (float): Initial learning rate.
-      num_train_batches (int): Number of training iterations per epoch.
-      num_val_batches (int): Number of validation iterations per epoch.
+      num_train_batches (int): Maximum number of training iterations per epoch.
+      num_val_batches (int): Maximum number of validation iterations per epoch.
       early_stopping_patience (int): Number of epochs with no improvement on validation loss before stopping.
       classification_threshold (float): Threshold on cosine similarity to classify pairs as similar (1) or dissimilar (0).
       margin (float): Margin parameter for the MarginCosineLoss.
       run_dir (str): Directory for TensorBoard logs.
       checkpoint_dir (str): Directory to save model checkpoints and confusion matrix plots.
-      
-    The function performs the following:
-      - Logs training/validation losses and classification metrics (accuracy, precision, recall, F1 score) to TensorBoard.
-      - Uses a learning rate scheduler (ReduceLROnPlateau) based on the validation loss.
-      - Implements early stopping and saves model checkpoints when validation loss improves.
-      - Plots and saves a heatmap of the confusion matrix for the validation set.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
     print("You are now training on", device)
 
     writer = SummaryWriter(run_dir)
@@ -123,7 +120,7 @@ def train_siamese_network(input_shape=(3, 112, 112),
     base_net = ViT_finetune(embedding_dim=128).to(device)
     model = SiameseNetwork(base_net).to(device)
     criterion = MarginCosineLoss(margin=margin)
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2, verbose=True)
     
     best_val_loss = float('inf')
@@ -133,39 +130,49 @@ def train_siamese_network(input_shape=(3, 112, 112),
     for epoch in range(num_epochs):
         model.train()
         train_loss_epoch = 0.0
+        train_batches = 0
         
-        # Training loop with tqdm
-        train_bar = tqdm(range(num_train_batches), desc=f"Epoch {epoch+1}/{num_epochs} Training")
-        for _ in train_bar:
-            # Replace dummy data with actual face image pairs.
-            x1 = torch.rand(batch_size, *input_shape).to(device)
-            x2 = torch.rand(batch_size, *input_shape).to(device)
-            labels = torch.randint(0, 2, (batch_size,), dtype=torch.float32).to(device)
+        # Training loop using the train_dataloader.
+        train_bar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{num_epochs} Training")
+        for batch_idx, (img1, img2, labels) in enumerate(train_bar):
+            # Limit training to num_train_batches if specified.
+            if batch_idx >= num_train_batches:
+                break
+
+            img1 = img1.to(device)
+            img2 = img2.to(device)
+            labels = labels.to(device)
             
             optimizer.zero_grad()
-            out1, out2, cosine_sim = model(x1, x2)
+            out1, out2, cosine_sim = model(img1, img2)
             loss = criterion(out1, out2, labels)
             loss.backward()
             optimizer.step()
             
             train_loss_epoch += loss.item()
             train_bar.set_postfix(loss=loss.item())
+            train_batches += 1
             
-        avg_train_loss = train_loss_epoch / num_train_batches
+        avg_train_loss = train_loss_epoch / train_batches if train_batches > 0 else 0.0
         writer.add_scalar("Loss/Train", avg_train_loss, epoch)
         
-        # Validation loop
+        # Validation loop.
         model.eval()
         val_loss_epoch = 0.0
         all_preds = []
         all_labels = []
+        val_batches = 0
         with torch.no_grad():
-            val_bar = tqdm(range(num_val_batches), desc=f"Epoch {epoch+1}/{num_epochs} Validation")
-            for _ in val_bar:
-                x1 = torch.rand(batch_size, *input_shape).to(device)
-                x2 = torch.rand(batch_size, *input_shape).to(device)
-                labels = torch.randint(0, 2, (batch_size,), dtype=torch.float32).to(device)
-                out1, out2, cosine_sim = model(x1, x2)
+            val_bar = tqdm(val_dataloader, desc=f"Epoch {epoch+1}/{num_epochs} Validation")
+            for batch_idx, (img1, img2, labels) in enumerate(val_bar):
+                if batch_idx >= num_val_batches:
+                    break
+
+                img1 = img1.to(device)
+                img2 = img2.to(device)
+                labels = labels.to(device)
+                
+                out1, out2, cosine_sim = model(img1, img2)
                 loss = criterion(out1, out2, labels)
                 val_loss_epoch += loss.item()
                 val_bar.set_postfix(loss=loss.item())
@@ -174,8 +181,9 @@ def train_siamese_network(input_shape=(3, 112, 112),
                 preds = (cosine_sim > classification_threshold).float().cpu().numpy()
                 all_preds.extend(preds)
                 all_labels.extend(labels.cpu().numpy())
+                val_batches += 1
                 
-        avg_val_loss = val_loss_epoch / num_val_batches
+        avg_val_loss = val_loss_epoch / val_batches if val_batches > 0 else 0.0
         writer.add_scalar("Loss/Validation", avg_val_loss, epoch)
         print(f"Epoch {epoch+1} - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
         
@@ -203,13 +211,12 @@ def train_siamese_network(input_shape=(3, 112, 112),
         plt.savefig(cm_path)
         plt.close()
 
-        # Read the image and convert dimensions from (H, W, C) to (C, H, W) using permute.
+        # Log confusion matrix image to TensorBoard.
         cm_img = torch.tensor(plt.imread(cm_path))
-        cm_img = cm_img.permute(2, 0, 1)  # Rearrange dimensions for TensorBoard.
+        cm_img = cm_img.permute(2, 0, 1)  # Convert HWC to CHW.
         writer.add_image("Confusion_Matrix", cm_img, epoch)
-
         
-        # Update LR scheduler and early stopping.
+        # Update learning rate scheduler and early stopping.
         scheduler.step(avg_val_loss)
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
@@ -234,6 +241,7 @@ if __name__ == '__main__':
     # Argument Parser for Terminal Execution
     parser = argparse.ArgumentParser(description="Train a Siamese network with a ViT-B-16 backbone for face verification.")
     parser.add_argument("--batch_size", type=int, default=16, help="Number of image pairs per batch.")
+    parser.add_argument("--num_workers", type=int, default=4, help="Number of workers for dataloader.")
     parser.add_argument("--num_epochs", type=int, default=20, help="Maximum number of training epochs.")
     parser.add_argument("--learning_rate", type=float, default=0.001, help="Initial learning rate.")
     parser.add_argument("--num_train_batches", type=int, default=100, help="Training iterations per epoch.")
@@ -245,9 +253,20 @@ if __name__ == '__main__':
     parser.add_argument("--checkpoint_dir", type=str, default="modeling/model/checkpoints", help="Directory to save model checkpoints and plots.")
     
     args = parser.parse_args()
+
+    train_df = pd.read_csv("/home/seif_elkerdany/projects/data/train_dataset.csv")
+    test_df = pd.read_csv("/home/seif_elkerdany/projects/data/test_dataset.csv")
+
+    train_df, val_df = train_test_split(test_df, test_size=0.5, random_state=42)
+
+    train_dataset = SiameseDataset(train_df, train=True)
+    val_dataset = SiameseDataset(val_df, train= False)
     
-    train_siamese_network(input_shape=(3, 112, 112),
-                          batch_size=args.batch_size,
+    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+    val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+
+    train_siamese_network(train_dataloader=train_dataloader,
+                          val_dataloader=val_dataloader,
                           num_epochs=args.num_epochs,
                           learning_rate=args.learning_rate,
                           num_train_batches=args.num_train_batches,
@@ -257,3 +276,4 @@ if __name__ == '__main__':
                           margin=args.margin,
                           run_dir=args.run_dir,
                           checkpoint_dir=args.checkpoint_dir)
+    

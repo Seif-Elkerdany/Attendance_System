@@ -47,8 +47,8 @@ class SiameseDataset(Dataset):
         self.augment = T.RandomApply(
            T.Compose([
                RandomAffineWithSameParams(), 
-               RandomBrightnessContrast(brightness=0.3, contrast=0.3),
-               T.RandomApply([T.GaussianBlur(kernel_size=3)], p=0.5),
+               RandomBrightnessContrast(brightness=0.3, contrast=0.3)
+               # T.RandomApply([T.GaussianBlur(kernel_size=3)], p=0.5),
            ]),
            p=0.3
        )
@@ -56,7 +56,10 @@ class SiameseDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, index):
-        img1_path, img2_path, label = self.data[index]
+        row = self.data.iloc[index]
+        img1_path = row['image1']
+        img2_path = row['image2']
+        label = row['label']
 
         # Load and preprocess images
         img1 = self._load_image(img1_path)
