@@ -14,64 +14,52 @@ import warnings
 from torch.utils.data import DataLoader
 import pandas as pd
 from SiameseDataset import SiameseDataset
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_curve, roc_auc_score
 import numpy as np
+from facenet_pytorch import InceptionResnetV1
 warnings.filterwarnings("ignore")
 
-
-class CNNBackbone(nn.Module):
-    def __init__(self, embedding_dim=512):
+# Define the backbone using InceptionResnetV1
+class InceptionResnetBackbone(nn.Module):
+    def __init__(self, embedding_dim=512, pretrained='vggface2'):
+        """
+        Parameters:
+          embedding_dim (int): Desired embedding dimension. InceptionResnetV1 outputs 512-dim embeddings by default.
+          pretrained (str): Dataset on which the model is pretrained. Options include 'vggface2' or 'casia-webface'.
+        """
         super().__init__()
-        # Define the convolutional feature extractor
-        self.features = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.BatchNorm2d(64),
-            nn.MaxPool2d(kernel_size=2),  # Output shape: (B, 64, H/2, W/2)
-            
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.BatchNorm2d(128),
-            nn.MaxPool2d(kernel_size=2),  # Output shape: (B, 128, H/4, W/4)
-            
-            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.BatchNorm2d(256),
-            nn.MaxPool2d(kernel_size=2)   # Output shape: (B, 256, H/8, W/8)
-        )
-        
-        # Use adaptive average pooling to reduce the spatial dimension to 1×1
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        
-        # A fully connected layer to map features to the desired embedding dimension
-        self.embedding_layer = nn.Linear(256, embedding_dim)
-        
+        # Load the InceptionResnetV1 model pretrained on the specified dataset.
+        self.model = InceptionResnetV1(pretrained=pretrained)
+        # If the desired embedding_dim differs from 512, add a linear layer to adjust the dimensions.
+        if embedding_dim != 512:
+            self.embedding_layer = nn.Linear(512, embedding_dim)
+        else:
+            self.embedding_layer = None
+
     def forward(self, x):
-        # Pass through the CNN feature extractor
-        x = self.features(x)
-        # Adaptive average pooling to get a (B, 256, 1, 1) tensor
-        x = self.avgpool(x)
-        # Flatten to shape (B, 256)
-        x = torch.flatten(x, start_dim=1)
-        # Map to the embedding dimension
-        x = self.embedding_layer(x)
-        # Optionally normalize the embeddings (recommended for similarity tasks)
-        x = F.normalize(x, p=2, dim=1)
-        return x
+        # Get the embedding from InceptionResnetV1 (expected shape: (B, 512)).
+        embedding = self.model(x)
+        # Optionally project to a different embedding dimension.
+        if self.embedding_layer is not None:
+            embedding = self.embedding_layer(embedding)
+        # Normalize embeddings to lie on the unit hypersphere.
+        embedding = F.normalize(embedding, p=2, dim=1)
+        return embedding
 
 # Define the Siamese network that uses the shared backbone
 class SiameseNetwork(nn.Module):
     def __init__(self, base_net):
         super().__init__()
         self.base_net = base_net
-        
+
     def forward(self, input1, input2):
         embedding1 = self.base_net(input1)  # (B, embedding_dim)
         embedding2 = self.base_net(input2)  # (B, embedding_dim)
-        # Compute similarity (e.g., cosine similarity)
+        # Compute cosine similarity between the two embeddings.
         cosine_sim = F.cosine_similarity(embedding1, embedding2)
         return embedding1, embedding2, cosine_sim
-    
+
 def contrastive_loss(embedding1, embedding2, label, margin=1.0):
     """
     Contrastive loss for face verification.
@@ -79,14 +67,14 @@ def contrastive_loss(embedding1, embedding2, label, margin=1.0):
     - label: (B,) where 1 indicates the same identity, 0 indicates different identities.
     - margin: The minimum distance for different pairs.
     """
-    # Compute Euclidean distance between pairs
+    # Compute Euclidean distance between the embeddings.
     distance = F.pairwise_distance(embedding1, embedding2)
-    # Loss: if same person, we want distance to be small; if different, at least margin apart
+    # Loss for similar pairs: we want the distance to be small.
     loss_same = label * distance.pow(2)
+    # Loss for dissimilar pairs: distance should be at least 'margin' apart.
     loss_diff = (1 - label) * F.relu(margin - distance).pow(2)
     loss = loss_same + loss_diff
     return loss.mean()
-
 
 def train_siamese_network(train_dataloader,
                           val_dataloader,
@@ -96,8 +84,8 @@ def train_siamese_network(train_dataloader,
                           num_val_batches=20,
                           early_stopping_patience=3,
                           classification_threshold=0.5,
-                          embedding_dim = 1024,
-                          run_dir="runs/siamese_B1.1_net",
+                          embedding_dim=512,
+                          run_dir="runs/siamese_B2_net",
                           checkpoint_dir="checkpoints"):
     """
     Parameters:
@@ -117,7 +105,8 @@ def train_siamese_network(train_dataloader,
 
     writer = SummaryWriter(run_dir)
     
-    backbone = CNNBackbone(embedding_dim=embedding_dim)
+    # Use the InceptionResnetBackbone in place of the VGGBackbone.
+    backbone = InceptionResnetBackbone(embedding_dim=embedding_dim, pretrained='vggface2')
     model = SiameseNetwork(base_net=backbone)
     model = model.to(device)
 
@@ -179,7 +168,6 @@ def train_siamese_network(train_dataloader,
                 val_bar.set_postfix(loss=loss.item())
                 
                 all_sims.extend(cosine_sim.cpu().numpy())
-
                 # Classification: predict similar if cosine_sim > threshold.
                 preds = (cosine_sim > classification_threshold).float().cpu().numpy()
                 all_preds.extend(preds)
@@ -219,7 +207,6 @@ def train_siamese_network(train_dataloader,
         cm_img = cm_img.permute(2, 0, 1)  # Convert HWC to CHW.
         writer.add_image("Confusion_Matrix", cm_img, epoch)
 
-        
         # Update learning rate scheduler and early stopping.
         scheduler.step(avg_val_loss)
         if avg_val_loss < best_val_loss:
@@ -244,7 +231,7 @@ def train_siamese_network(train_dataloader,
 
     plt.figure()
     plt.plot(fpr, tpr, label=f"ROC curve (AUC = {roc_auc:.4f})", color="blue")
-    plt.plot([0, 1], [0, 1], 'r--')  
+    plt.plot([0, 1], [0, 1], 'r--')
     plt.xlabel("False Positive Rate")
     plt.ylabel("True Positive Rate")
     plt.title("Receiver Operating Characteristic")
@@ -259,12 +246,10 @@ def train_siamese_network(train_dataloader,
     
     writer.close()
 
-
 if __name__ == '__main__':
-
     # M7dsh y5af da bs 3l4an lw 3aizen t3mlo run mn el terminal xD
     # Argument Parser for Terminal Execution
-    parser = argparse.ArgumentParser(description="Train a Siamese network for face verification for our Attendace System.")
+    parser = argparse.ArgumentParser(description="Train a Siamese network for face verification for our Attendance System.")
     parser.add_argument("--batch_size", type=int, default=16, help="Number of image pairs per batch.")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of workers for dataloader.")
     parser.add_argument("--num_epochs", type=int, default=20, help="Maximum number of training epochs.")
@@ -274,8 +259,8 @@ if __name__ == '__main__':
     parser.add_argument("--early_stopping_patience", type=int, default=3, help="Epochs to wait before early stopping.")
     parser.add_argument("--classification_threshold", type=float, default=0.5, help="Threshold on cosine similarity for classification.")
     parser.add_argument("--margin", type=float, default=0.47, help="Margin for MarginCosineLoss.")
-    parser.add_argument("--run_dir", type=str, default="/home/seif_elkerdany/projects/modeling/model/runs/siamese_B1_net", help="TensorBoard log directory.")
-    parser.add_argument("--checkpoint_dir", type=str, default="/home/seif_elkerdany/projects/modeling/model/checkpoints/B1", help="Directory to save model checkpoints and plots.")
+    parser.add_argument("--run_dir", type=str, default="/home/seif_elkerdany/projects/modeling/model/runs/siamese_B2_net", help="TensorBoard log directory.")
+    parser.add_argument("--checkpoint_dir", type=str, default="/home/seif_elkerdany/projects/modeling/model/checkpoints/B2", help="Directory to save model checkpoints and plots.")
     
     args = parser.parse_args()
 
@@ -283,7 +268,7 @@ if __name__ == '__main__':
     val_df = pd.read_csv("/home/seif_elkerdany/projects/data/val_split.csv")
 
     train_dataset = SiameseDataset(train_df, train=True)
-    val_dataset = SiameseDataset(val_df, train= False)
+    val_dataset = SiameseDataset(val_df, train=False)
     
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
     val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
