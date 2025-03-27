@@ -14,7 +14,6 @@ import warnings
 from torch.utils.data import DataLoader
 import pandas as pd
 from SiameseDataset import SiameseDataset
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_curve, roc_auc_score
 import numpy as np
 from facenet_pytorch import InceptionResnetV1
