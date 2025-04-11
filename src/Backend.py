@@ -6,9 +6,29 @@ from PIL import Image, ImageTk
 from mtcnn.mtcnn import MTCNN
 from datetime import datetime
 import csv
+from modeling.model.SNN_B1 import CNNBackbone, SiameseNetwork
+from modeling.model.test import predict
+import torch
+
+# Model loading
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+embedding_dim = 1024
+backbone = CNNBackbone(embedding_dim=embedding_dim)
+MODEL = SiameseNetwork(base_net=backbone)
+MODEL = MODEL.to(device)
+
+checkpoint_path = "/home/seif_elkerdany/projects/modeling/model/checkpoints/B1/best_model_epoch_19.pt"  
+MODEL.load_state_dict(torch.load(checkpoint_path, map_location=device))
+MODEL.eval()
 
 # Path to the Desktop directory
-desktop_path = os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop')
+if os.name == 'nt':  # 'nt' stands for Windows
+    home_dir = os.environ['USERPROFILE']
+else:                # This for linux (Seif Elkerdany)
+    home_dir = os.environ['HOME']
+
+desktop_path = os.path.join(home_dir, 'Desktop')
 
 # Set up the main folder for storing images and course data
 MAIN_FOLDER = os.path.join(desktop_path, "AttendanceSystemData")
@@ -20,6 +40,10 @@ face_detector = MTCNN()
 
 # List to store course names
 courses_list = []
+
+# Adding existed courses
+for folder in os.listdir(MAIN_FOLDER):
+    courses_list.append(folder)
 
 # Function to update the course list in the Listbox and Combobox
 def update_courses_list():
@@ -38,7 +62,7 @@ def detect_face(img):
     if result:
         x, y, w, h = result[0]['box']
         face = img[y:y+h, x:x+w]
-        return cv2.resize(face, (100, 100))
+        return cv2.resize(face, (112, 112))
     return None
 
 # Function to save the student's face image for a specific course
@@ -54,11 +78,21 @@ def save_face(img, student_id, course_name):
 
 # Placeholder function for comparing faces using a trained model
 def compare_faces(img, course_name):
-    # **THIS IS WHERE THE FACE RECOGNITION MODEL LOGIC GOES**
- 
+    
+    student_imgs_path = os.path.join(MAIN_FOLDER, course_name)
 
-    # Return None for now (indicating no match for this placeholder)
-    return None
+    for student_img in os.listdir(student_imgs_path):
+        
+        current_student = cv2.imread(student_img, cv2.IMREAD_GRAYSCALE)
+
+        current_student = cv2.resize(current_student, (112, 112))
+
+        prediction = predict(MODEL, img, current_student)
+
+        if prediction == 1:
+            pass
+        else:
+            pass
 
 # GUI
 root = tk.Tk()
