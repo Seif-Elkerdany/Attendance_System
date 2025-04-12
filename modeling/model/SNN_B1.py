@@ -13,7 +13,7 @@ import argparse
 import warnings
 from torch.utils.data import DataLoader
 import pandas as pd
-from SiameseDataset import SiameseDataset
+from .SiameseDataset import SiameseDataset
 from sklearn.metrics import roc_curve, roc_auc_score
 import numpy as np
 warnings.filterwarnings("ignore")

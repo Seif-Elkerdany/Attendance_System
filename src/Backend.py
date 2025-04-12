@@ -90,9 +90,11 @@ def compare_faces(img, course_name):
         prediction = predict(MODEL, img, current_student)
 
         if prediction == 1:
-            pass
+            name_without_ext = os.path.splitext(student_img)[0]
+            student_id = name_without_ext.split("_")[0]
+            return student_id
         else:
-            pass
+            return None
 
 # GUI
 root = tk.Tk()
