@@ -77,7 +77,7 @@ class SiameseDataset(Dataset):
         """Load and preprocess a single image."""
         img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
         img = cv2.resize(img, (112, 112), interpolation=cv2.INTER_AREA)
-        return TF.to_tensor(img).repeat(3, 1, 1)
+        return TF.to_tensor(img)
 
     def _apply_augmentations(self, img, seed=None):
         """Apply augmentations with an optional seed for reproducibility."""

@@ -9,6 +9,8 @@ import csv
 from modeling.model.SNN_B1 import CNNBackbone, SiameseNetwork
 from modeling.model.test import predict
 import torch
+import uuid
+import torchvision.transforms.functional as TF
 
 # Model loading
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -69,32 +71,40 @@ def detect_face(img):
 def save_face(img, student_id, course_name):
     course_folder = os.path.join(MAIN_FOLDER, course_name)
     os.makedirs(course_folder, exist_ok=True)
-    student_folder = os.path.join(course_folder, student_id)
-    os.makedirs(student_folder, exist_ok=True)
-    filename = datetime.now().strftime("%Y%m%d%H%M%S") + ".jpg"
-    path = os.path.join(student_folder, filename)
+    path = os.path.join(course_folder, student_id + f"_{uuid.uuid1()}.jpg")
     cv2.imwrite(path, img)
     return path
 
+
 # Placeholder function for comparing faces using a trained model
 def compare_faces(img, course_name):
-    
     student_imgs_path = os.path.join(MAIN_FOLDER, course_name)
 
-    for student_img in os.listdir(student_imgs_path):
-        
-        current_student = cv2.imread(student_img, cv2.IMREAD_GRAYSCALE)
+    # Convert the detected face to grayscale if it's not already (to match the dataset preprocessing)
+    if len(img.shape) == 3:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        current_student = cv2.resize(current_student, (112, 112))
+    img_tensor = TF.to_tensor(img).repeat(3, 1, 1).unsqueeze(0).to(device)
 
-        prediction = predict(MODEL, img, current_student)
+    for student_file in os.listdir(student_imgs_path):
+        student_img_path = os.path.join(student_imgs_path, student_file)
+
+        # Load the student image in grayscale mode
+        current_student = cv2.imread(student_img_path, cv2.IMREAD_GRAYSCALE)
+        if current_student is None:
+            continue
+
+        current_student = cv2.resize(current_student, (112, 112), interpolation=cv2.INTER_AREA)
+        current_student_tensor = TF.to_tensor(current_student).repeat(3, 1, 1).unsqueeze(0).to(device)
+
+        prediction = predict(MODEL, img_tensor, current_student_tensor)
 
         if prediction == 1:
-            name_without_ext = os.path.splitext(student_img)[0]
+            name_without_ext = os.path.splitext(student_file)[0]
             student_id = name_without_ext.split("_")[0]
             return student_id
-        else:
-            return None
+
+    return None
 
 # GUI
 root = tk.Tk()
@@ -176,13 +186,18 @@ def choose_registration_method(course_name):
         count = 0
         while count < 5:
             ret, frame = cap.read()
+
+            cv2.imshow("Capturing Face", frame)
+            cv2.waitKey(1)
+
+            key = cv2.waitKey(500) & 0xFF
             if ret:
-                face = detect_face(frame)
-                if face is not None:
-                    images.append(face)
-                    count += 1
-                    cv2.imshow("Capturing Face", frame)
-                    cv2.waitKey(500)
+                if key == ord('c'):
+                    face = detect_face(frame)
+                    if face is not None:
+                        images.append(face)
+                        count += 1
+
         cap.release()
         cv2.destroyAllWindows()
 

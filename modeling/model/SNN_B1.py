@@ -13,7 +13,7 @@ import argparse
 import warnings
 from torch.utils.data import DataLoader
 import pandas as pd
-from .SiameseDataset import SiameseDataset
+from SiameseDataset import SiameseDataset
 from sklearn.metrics import roc_curve, roc_auc_score
 import numpy as np
 warnings.filterwarnings("ignore")
@@ -24,7 +24,7 @@ class CNNBackbone(nn.Module):
         super().__init__()
         # Define the convolutional feature extractor
         self.features = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(in_channels=1, out_channels=64, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.BatchNorm2d(64),
             nn.MaxPool2d(kernel_size=2),  # Output shape: (B, 64, H/2, W/2)

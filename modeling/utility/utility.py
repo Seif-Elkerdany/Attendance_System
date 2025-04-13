@@ -12,14 +12,6 @@ class datacleaner:
     In this class I will put all the functions We will need for cleaning all the datasets.
 
     You can upload this file on kaggle and import from it what you need easily.
-
-    The functions are:
-        1) extention_checker
-        2) sample_plot
-        3) blur_detector
-        4) check_blur_in_folder
-        5) compute_brightness
-        6) check_brightness_in_folder
     """
 
     def extention_checker(folder_path):
@@ -47,7 +39,6 @@ class datacleaner:
                 else:
                     jpg_counter += 1    # Add 1 to the jpg_counter if it is .jpg
 
-        # Print the result
         print("Number of JPG images found:", jpg_counter)
         print("Number of non-JPG images found:", len(non_jpg_images))
 
@@ -64,7 +55,6 @@ class datacleaner:
         # Get a list of image files in the folder
         image_files = [f for f in os.listdir(folder_path) if f.lower().endswith(('.jpg', '.jpeg'))]
 
-        # Checks if the folder is empty
         if len(image_files) == 0:
             print("No images found in the folder.")
             return
@@ -128,10 +118,10 @@ class datacleaner:
         
         # Iterate over all files in the folder
         for file in os.listdir(folder_path):
-            img_path = os.path.join(folder_path, file)  # Get the full path of the image
+            img_path = os.path.join(folder_path, file)  
             blur_score = datacleaner.blur_detector(img_path)  # Compute blur score using Laplacian variance
             
-            if blur_score is not None:  # Ensure the image was processed correctly
+            if blur_score is not None: 
                 blur_scores[file] = blur_score  # Store the blur score
     
         # Sort images by blur score (low values = blurry images)
@@ -144,29 +134,28 @@ class datacleaner:
         # Plot the 5 most blurry images
         plt.figure(figsize=(12, 6))
         for i, (img_name, _) in enumerate(most_blurry):
-            img_path = os.path.join(folder_path, img_name)  # Load image path
-            img = cv2.imread(img_path)  # Read the image
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert to RGB (OpenCV loads in BGR)
-    
-            plt.subplot(2, 5, i + 1)  # Create subplot
+            img_path = os.path.join(folder_path, img_name) 
+            img = cv2.imread(img_path)  
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  
+            plt.subplot(2, 5, i + 1) 
             plt.imshow(img)
-            plt.title(f"Blurry")  # Image title
-            plt.axis("off")  # Hide axes
+            plt.title(f"Blurry")  
+            plt.axis("off") 
     
         # Plot the 5 sharpest images
         for i, (img_name, _) in enumerate(sharpest):
-            img_path = os.path.join(folder_path, img_name)  # Load image path
-            img = cv2.imread(img_path)  # Read the image
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert to RGB
+            img_path = os.path.join(folder_path, img_name)  
+            img = cv2.imread(img_path)  
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  
             
-            plt.subplot(2, 5, i + 6)  # Create subplot for sharp images
+            plt.subplot(2, 5, i + 6)  
             plt.imshow(img)
-            plt.title(f"Sharp")  # Image title
-            plt.axis("off")  # Hide axes
+            plt.title(f"Sharp") 
+            plt.axis("off") 
     
-        plt.suptitle("Blurry vs. Sharp Images", fontsize=16)  # Main title
-        plt.tight_layout()  # Adjust layout for better visualization
-        plt.show()  # Display the images
+        plt.suptitle("Blurry vs. Sharp Images", fontsize=16)  
+        plt.tight_layout()  
+        plt.show()  
 
         return most_blurry, sharpest
 
@@ -180,9 +169,9 @@ class datacleaner:
         Returns:
             float: The mean brightness value (0-255).
         """
-        img = cv2.imread(img_path)  # Read image
+        img = cv2.imread(img_path)  
         if img is None:
-            return None  # Handle unreadable files
+            return None  
     
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)  # Convert to HSV
         brightness = np.mean(hsv[:, :, 2])  # Extract V channel (brightness) and compute mean
@@ -263,8 +252,7 @@ class datacleaner:
         Args:
             image_folder (str): Path to the folder containing images.
         """
-        valid_extensions = (".jpg", ".jpeg", ".png")
-        image_list = [img for img in os.listdir(image_folder) if img.lower().endswith(valid_extensions)]
+        image_list = [img for img in os.listdir(image_folder) if img.lower().endswith(".jpg")]
 
         if not image_list:
             print("Error: No valid images found!")
