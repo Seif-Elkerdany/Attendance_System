@@ -6,23 +6,47 @@ from PIL import Image, ImageTk
 from mtcnn.mtcnn import MTCNN
 from datetime import datetime
 import csv
-from modeling.model.SNN_B1 import CNNBackbone, SiameseNetwork
+from modeling.model.NN_B3 import SiameseClassifier
 from modeling.model.test import predict
 import torch
 import uuid
 import torchvision.transforms.functional as TF
 
+
+def _load_image(path):
+    img = cv2.imread(path)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = cv2.resize(img, (160, 160))
+    tensor = TF.to_tensor(img)
+    tensor = TF.normalize(tensor, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+    return tensor
+
+# For captured face arrays (not from disk)
+
+def _preprocess_array(img_array):
+    # img_array: HxWx3 BGR
+    rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
+    resized = cv2.resize(rgb, (160, 160))
+    tensor = TF.to_tensor(resized)
+    tensor = TF.normalize(tensor, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+    return tensor
+
 # Model loading
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-embedding_dim = 1024
-backbone = CNNBackbone(embedding_dim=embedding_dim)
-MODEL = SiameseNetwork(base_net=backbone)
-MODEL = MODEL.to(device)
+MODEL = SiameseClassifier(embedding_dim=256).to(device)
+ckpt_path = "/home/seif_elkerdany/projects/modeling/model/checkpoints/B3.1/checkpoint_epoch1.pt"
+ckpt = torch.load(ckpt_path, map_location=device)
+state_dict = ckpt.get("model_state_dict", ckpt)
 
-checkpoint_path = "/home/seif_elkerdany/projects/modeling/model/checkpoints/B1/best_model_epoch_19.pt"  
-MODEL.load_state_dict(torch.load(checkpoint_path, map_location=device))
+cleaned = {
+    (k.replace("module.", "") if k.startswith("module.") else k): v
+    for k, v in state_dict.items()
+}
+MODEL.load_state_dict(cleaned)
 MODEL.eval()
+
+# MODEL = InceptionResnetV1(pretrained='vggface2').eval().to(device)
 
 # Path to the Desktop directory
 if os.name == 'nt':  # 'nt' stands for Windows
@@ -64,7 +88,7 @@ def detect_face(img):
     if result:
         x, y, w, h = result[0]['box']
         face = img[y:y+h, x:x+w]
-        return cv2.resize(face, (112, 112))
+        return cv2.resize(face, (160, 160))
     return None
 
 # Function to save the student's face image for a specific course
@@ -75,35 +99,29 @@ def save_face(img, student_id, course_name):
     cv2.imwrite(path, img)
     return path
 
+def save_face_(img, student_id, course_name):
+    course_folder = os.path.join(MAIN_FOLDER, course_name)
+    os.makedirs(course_folder, exist_ok=True)
+    path = os.path.join(course_folder, student_id + f"_{uuid.uuid1()}.jpg")
+    cv2.imwrite(path, img)
+    return path
+
 
 # Placeholder function for comparing faces using a trained model
 def compare_faces(img, course_name):
-    student_imgs_path = os.path.join(MAIN_FOLDER, course_name)
-
-    # Convert the detected face to grayscale if it's not already (to match the dataset preprocessing)
-    if len(img.shape) == 3:
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    img_tensor = TF.to_tensor(img).repeat(3, 1, 1).unsqueeze(0).to(device)
-
-    for student_file in os.listdir(student_imgs_path):
-        student_img_path = os.path.join(student_imgs_path, student_file)
-
-        # Load the student image in grayscale mode
-        current_student = cv2.imread(student_img_path, cv2.IMREAD_GRAYSCALE)
-        if current_student is None:
+    face_tensor = _preprocess_array(img).unsqueeze(0).to(device)
+    student_folder = os.path.join(MAIN_FOLDER, course_name)
+    for fname in os.listdir(student_folder):
+        path = os.path.join(student_folder, fname)
+        try:
+            stud_tensor = _load_image(path).unsqueeze(0).to(device)
+        except Exception:
             continue
-
-        current_student = cv2.resize(current_student, (112, 112), interpolation=cv2.INTER_AREA)
-        current_student_tensor = TF.to_tensor(current_student).repeat(3, 1, 1).unsqueeze(0).to(device)
-
-        prediction = predict(MODEL, img_tensor, current_student_tensor)
-
-        if prediction == 1:
-            name_without_ext = os.path.splitext(student_file)[0]
-            student_id = name_without_ext.split("_")[0]
-            return student_id
-
+        # model.predict returns (probs, preds)
+        probs, preds = MODEL.predict(face_tensor, stud_tensor)
+        if preds.item():
+            sid = os.path.splitext(fname)[0].split('_')[0]
+            return sid
     return None
 
 # GUI
@@ -177,34 +195,28 @@ def choose_registration_method(course_name):
                 messagebox.showerror("Error", "No face detected")
 
     def capture_faces():
-        student_id = id_entry_register.get().strip()
-        if not student_id:
-            messagebox.showerror("Error", "Please enter student ID")
-            return
-        cap = cv2.VideoCapture(0)
-        images = []
-        count = 0
-        while count < 5:
-            ret, frame = cap.read()
-
-            cv2.imshow("Capturing Face", frame)
-            cv2.waitKey(1)
-
-            key = cv2.waitKey(500) & 0xFF
-            if ret:
-                if key == ord('c'):
-                    face = detect_face(frame)
-                    if face is not None:
-                        images.append(face)
-                        count += 1
-
-        cap.release()
-        cv2.destroyAllWindows()
-
-        for img in images:
-            save_face(img, student_id, course_name)
-        messagebox.showinfo("Success", "Faces registered successfully!")
-        id_entry_register.delete(0, tk.END)  # Clear ID after registration
+         sid = id_entry_register.get().strip()
+         if not sid:
+             messagebox.showerror("Error","Enter student ID")
+             return
+         cap = cv2.VideoCapture(0)
+         if not cap.isOpened():
+             messagebox.showerror("Error","Cannot open camera")
+             return
+         images, count = [], 0
+         while count < 5:
+             ret, frame = cap.read()
+             if not ret: continue
+             cv2.imshow("Capturing Face", frame)
+             cv2.waitKey(1)
+             if (cv2.waitKey(500)&0xFF)==ord('c'):
+                 face = detect_face(frame)
+                 if face is not None:
+                     images.append(face)
+                     count += 1
+         cap.release(); cv2.destroyAllWindows()
+         for img in images: save_face(img, sid, course_name)
+         messagebox.showinfo("Success","Faces registered!")
 
     tk.Button(method_window, text="Upload Image", command=upload_image).pack(pady=10)
     tk.Button(method_window, text="Capture Faces", command=capture_faces).pack(pady=10)

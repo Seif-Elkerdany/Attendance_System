@@ -74,10 +74,12 @@ class SiameseDataset(Dataset):
         return img1, img2, torch.tensor(label, dtype=torch.float32)
 
     def _load_image(self, path):
-        """Load and preprocess a single image."""
-        img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-        img = cv2.resize(img, (112, 112), interpolation=cv2.INTER_AREA)
-        return TF.to_tensor(img)
+        img = cv2.imread(path)                         
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)     
+        img = cv2.resize(img, (160, 160))              
+        img = TF.to_tensor(img)                        
+        img = TF.normalize(img, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  
+        return img
 
     def _apply_augmentations(self, img, seed=None):
         """Apply augmentations with an optional seed for reproducibility."""

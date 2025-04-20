@@ -13,40 +13,29 @@ import argparse
 import warnings
 from torch.utils.data import DataLoader
 import pandas as pd
-from SiameseDataset import SiameseDataset
+from .SiameseDataset import SiameseDataset
 from sklearn.metrics import roc_curve, roc_auc_score
 import numpy as np
 from facenet_pytorch import InceptionResnetV1
 warnings.filterwarnings("ignore")
 
-# Define the backbone using InceptionResnetV1
+# Backbone using InceptionResnetV1
 class InceptionResnetBackbone(nn.Module):
-    def __init__(self, embedding_dim=512, pretrained='vggface2'):
-        """
-        Parameters:
-          embedding_dim (int): Desired embedding dimension. InceptionResnetV1 outputs 512-dim embeddings by default.
-          pretrained (str): Dataset on which the model is pretrained. Options include 'vggface2' or 'casia-webface'.
-        """
-        super().__init__()
-        # Load the InceptionResnetV1 model pretrained on the specified dataset.
-        self.model = InceptionResnetV1(pretrained=pretrained)
-        # If the desired embedding_dim differs from 512, add a linear layer to adjust the dimensions.
-        if embedding_dim != 512:
-            self.embedding_layer = nn.Linear(512, embedding_dim)
-        else:
-            self.embedding_layer = None
+        def __init__(self, pretrained='vggface2'):
+            """
+            Parameters:
+                InceptionResnetV1 outputs 512-dim embeddings by default.
+                pretrained (str): Dataset on which the model is pretrained. Options include 'vggface2' or 'casia-webface' nst5dm vggface2 kant dataset gamda.
+            """
+            super().__init__()
+            self.model = InceptionResnetV1(pretrained=pretrained)
 
-    def forward(self, x):
-        # Get the embedding from InceptionResnetV1 (expected shape: (B, 512)).
-        embedding = self.model(x)
-        # Optionally project to a different embedding dimension.
-        if self.embedding_layer is not None:
-            embedding = self.embedding_layer(embedding)
-        # Normalize embeddings to lie on the unit hypersphere.
-        embedding = F.normalize(embedding, p=2, dim=1)
-        return embedding
+        def forward(self, x):
+            emb = self.model(x)          # (B, 512)
+            emb = F.normalize(emb, p=2, dim=1)
+            return emb
 
-# Define the Siamese network that uses the shared backbone
+# Siamese network that uses the shared backbone
 class SiameseNetwork(nn.Module):
     def __init__(self, base_net):
         super().__init__()
@@ -66,11 +55,10 @@ def contrastive_loss(embedding1, embedding2, label, margin=1.0):
     - label: (B,) where 1 indicates the same identity, 0 indicates different identities.
     - margin: The minimum distance for different pairs.
     """
-    # Compute Euclidean distance between the embeddings.
+    # Compute Euclidean distance between pairs
     distance = F.pairwise_distance(embedding1, embedding2)
-    # Loss for similar pairs: we want the distance to be small.
+    # Loss: if same person, we want distance to be small; if different, at least margin apart
     loss_same = label * distance.pow(2)
-    # Loss for dissimilar pairs: distance should be at least 'margin' apart.
     loss_diff = (1 - label) * F.relu(margin - distance).pow(2)
     loss = loss_same + loss_diff
     return loss.mean()
@@ -83,7 +71,6 @@ def train_siamese_network(train_dataloader,
                           num_val_batches=20,
                           early_stopping_patience=3,
                           classification_threshold=0.5,
-                          embedding_dim=512,
                           run_dir="runs/siamese_B2_net",
                           checkpoint_dir="checkpoints"):
     """
@@ -105,7 +92,7 @@ def train_siamese_network(train_dataloader,
     writer = SummaryWriter(run_dir)
     
     # Use the InceptionResnetBackbone in place of the VGGBackbone.
-    backbone = InceptionResnetBackbone(embedding_dim=embedding_dim, pretrained='vggface2')
+    backbone = InceptionResnetBackbone(pretrained='vggface2')
     model = SiameseNetwork(base_net=backbone)
     model = model.to(device)
 
@@ -246,8 +233,7 @@ def train_siamese_network(train_dataloader,
     writer.close()
 
 if __name__ == '__main__':
-    # M7dsh y5af da bs 3l4an lw 3aizen t3mlo run mn el terminal xD
-    # Argument Parser for Terminal Execution
+    
     parser = argparse.ArgumentParser(description="Train a Siamese network for face verification for our Attendance System.")
     parser.add_argument("--batch_size", type=int, default=16, help="Number of image pairs per batch.")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of workers for dataloader.")
@@ -258,13 +244,13 @@ if __name__ == '__main__':
     parser.add_argument("--early_stopping_patience", type=int, default=3, help="Epochs to wait before early stopping.")
     parser.add_argument("--classification_threshold", type=float, default=0.5, help="Threshold on cosine similarity for classification.")
     parser.add_argument("--margin", type=float, default=0.47, help="Margin for MarginCosineLoss.")
-    parser.add_argument("--run_dir", type=str, default="/home/seif_elkerdany/projects/modeling/model/runs/siamese_B2_net", help="TensorBoard log directory.")
-    parser.add_argument("--checkpoint_dir", type=str, default="/home/seif_elkerdany/projects/modeling/model/checkpoints/B2", help="Directory to save model checkpoints and plots.")
+    parser.add_argument("--run_dir", type=str, default="/home/seif_elkerdany/projects/modeling/model/runs/siamese_B2.1_net", help="TensorBoard log directory.")
+    parser.add_argument("--checkpoint_dir", type=str, default="/home/seif_elkerdany/projects/modeling/model/checkpoints/B2.1", help="Directory to save model checkpoints and plots.")
     
     args = parser.parse_args()
 
-    train_df = pd.read_csv("/home/seif_elkerdany/projects/data/train_dataset.csv")
-    val_df = pd.read_csv("/home/seif_elkerdany/projects/data/val_split.csv")
+    train_df = pd.read_csv("/home/seif_elkerdany/projects/data/train_dataset_2.csv")
+    val_df = pd.read_csv("/home/seif_elkerdany/projects/data/val_split_2.csv")
 
     train_dataset = SiameseDataset(train_df, train=True)
     val_dataset = SiameseDataset(val_df, train=False)
