@@ -1,0 +1,432 @@
+{% extends "dashboard/base.html" %}
+
+{% block dashboard_content %}
+<div class="dashboard-header">
+    <h2><i class="fas fa-user-plus me-2"></i>Register Students</h2>
+    <p class="text-muted">Add students to your courses</p>
+</div>
+
+<div class="registration-container">
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Add New Student</h5>
+        </div>
+        <div class="card-body">
+            <form id="register-form">
+                <div class="mb-3">
+                    <label for="course" class="form-label">Course</label>
+                    <select class="form-select" id="course" name="course" required>
+                        <option value="" selected disabled>Select a course</option>
+                        {% for code, course in courses.items() %}
+                        <option value="{{ code }}">{{ code }} - {{ course.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="student_id" class="form-label">Student ID</label>
+                    <input type="text" class="form-control" id="student_id" name="student_id" 
+                           placeholder="Enter student ID" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="student_name" class="form-label">Student Name</label>
+                    <input type="text" class="form-control" id="student_name" name="student_name" 
+                           placeholder="Enter student full name" required>
+                </div>
+                
+                <div class="camera-section mb-4">
+                    <h5 class="mb-3">Face Registration</h5>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Capture or upload exactly 5 photos of the student's face from different angles
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <button type="button" id="start-camera" class="btn btn-primary w-100 py-3">
+                                <i class="fas fa-camera me-2"></i>Start Camera
+                            </button>
+                        </div>
+                        <div class="col-md-6">
+                            <button type="button" id="upload-btn" class="btn btn-outline-primary w-100 py-3">
+                                <i class="fas fa-upload me-2"></i>Upload Images (Max 5)
+                            </button>
+                            <input type="file" id="file-input" accept="image/*" multiple style="display: none;">
+                        </div>
+                    </div>
+                    
+                    <div class="camera-preview text-center mb-3">
+                        <video id="video" width="400" height="300" autoplay style="display: none;"></video>
+                        <canvas id="canvas" width="400" height="300" style="display: none;"></canvas>
+                        <div class="placeholder-camera bg-light rounded" id="placeholder" 
+                             style="height: 300px; display: flex; align-items: center; justify-content: center;">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-camera fa-4x mb-3"></i>
+                                <p>Camera preview will appear here</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="button" id="capture-btn" class="btn btn-success w-100 mb-3" style="display: none;">
+                        <i class="fas fa-camera me-2"></i>Capture Photo (Remaining: <span id="remaining-photos">5</span>)
+                    </button>
+                    
+                    <div id="photo-counter" class="text-center mb-3" style="display: none;">
+                        <span class="badge bg-primary">Photos: <span id="photo-count">0</span>/5</span>
+                    </div>
+                    
+                    <div id="captured-photos" class="mt-3 d-flex flex-wrap gap-2"></div>
+                    
+                    <div id="photo-errors" class="alert alert-danger mt-3" style="display: none;"></div>
+                </div>
+                
+                <button type="submit" id="register-btn" class="btn btn-primary w-100 py-2" disabled>
+                    <i class="fas fa-user-plus me-2"></i>Register Student
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const startBtn = document.getElementById('start-camera');
+    const uploadBtn = document.getElementById('upload-btn');
+    const fileInput = document.getElementById('file-input');
+    const captureBtn = document.getElementById('capture-btn');
+    const placeholder = document.getElementById('placeholder');
+    const registerBtn = document.getElementById('register-btn');
+    const capturedPhotos = document.getElementById('captured-photos');
+    const registerForm = document.getElementById('register-form');
+    const photoCounter = document.getElementById('photo-counter');
+    const photoCount = document.getElementById('photo-count');
+    const remainingPhotos = document.getElementById('remaining-photos');
+    const photoErrors = document.getElementById('photo-errors');
+    
+    let stream = null;
+    let photos = [];
+    let isFirstTimeSetup = false;
+    
+    // Check if it's first time setup
+    checkFirstTimeSetup();
+    
+    async function checkFirstTimeSetup() {
+        try {
+            const response = await fetch('/check-first-time-setup');
+            const data = await response.json();
+            isFirstTimeSetup = data.is_first_time;
+            
+            if (isFirstTimeSetup) {
+                showStorageSetupModal();
+            }
+        } catch (error) {
+            console.error('Error checking first time setup:', error);
+        }
+    }
+    
+    function showStorageSetupModal() {
+        // Create modal dynamically
+        const modalHTML = `
+        <div class="modal fade" id="storageModal" tabindex="-1" aria-labelledby="storageModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title" id="storageModalLabel">Initial Setup</h5>
+                    </div>
+                    <div class="modal-body">
+                        <p>Welcome to AIU Attendance System!</p>
+                        <p>Please select where to store student photos:</p>
+                        <div class="mb-3">
+                            <label for="storage-path" class="form-label">Storage Location</label>
+                            <input type="text" class="form-control" id="storage-path" 
+                                   placeholder="Enter path or leave default" value="AttendanceSystemData">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" id="confirm-storage">Confirm</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        
+        const modal = new bootstrap.Modal(document.getElementById('storageModal'));
+        modal.show();
+        
+        document.getElementById('confirm-storage').addEventListener('click', async () => {
+            const storagePath = document.getElementById('storage-path').value.trim() || 'AttendanceSystemData';
+            
+            try {
+                const response = await fetch('/set-storage-path', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ storage_path: storagePath })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    modal.hide();
+                    isFirstTimeSetup = false;
+                } else {
+                    alert('Error setting storage path: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to set storage path');
+            }
+        });
+    }
+    
+    // Start camera
+    startBtn.addEventListener('click', async () => {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: 'user' 
+                },
+                audio: false 
+            });
+            
+            video.srcObject = stream;
+            video.style.display = 'block';
+            placeholder.style.display = 'none';
+            startBtn.style.display = 'none';
+            captureBtn.style.display = 'block';
+            photoCounter.style.display = 'block';
+            
+            // Disable upload button when camera is active
+            uploadBtn.disabled = true;
+            
+            // Reset photos if any
+            if (photos.length > 0) {
+                resetPhotos();
+            }
+        } catch (err) {
+            console.error('Camera error:', err);
+            showError(`Could not access camera: ${err.message}`);
+        }
+    });
+    
+    // Capture photo
+    captureBtn.addEventListener('click', () => {
+        if (photos.length >= 5) {
+            showError('You can only add 5 photos per student');
+            return;
+        }
+        
+        canvas.getContext('2d').drawImage(video, 0, 0, 400, 300);
+        const photoData = canvas.toDataURL('image/jpeg');
+        photos.push(photoData);
+        
+        updatePhotoDisplay();
+        
+        if (photos.length >= 5) {
+            captureBtn.disabled = true;
+            registerBtn.disabled = false;
+        }
+    });
+    
+    // Upload images
+    uploadBtn.addEventListener('click', () => {
+        if (photos.length >= 5) {
+            showError('You can only add 5 photos per student');
+            return;
+        }
+        fileInput.click();
+    });
+    
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            const files = Array.from(e.target.files);
+            
+            // Check total photos won't exceed 5
+            if (photos.length + files.length > 5) {
+                showError(`You can only add ${5 - photos.length} more photos`);
+                return;
+            }
+            
+            // Reset if switching from camera to upload
+            if (stream) {
+                stopCamera();
+            }
+            
+            let loadedCount = 0;
+            
+            files.slice(0, 5 - photos.length).forEach((file, index) => {
+                if (!file.type.match('image.*')) {
+                    showError('Only image files are allowed');
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    photos.push(event.target.result);
+                    loadedCount++;
+                    
+                    if (loadedCount === Math.min(files.length, 5 - photos.length)) {
+                        updatePhotoDisplay();
+                        
+                        if (photos.length >= 5) {
+                            registerBtn.disabled = false;
+                        }
+                    }
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+    });
+    
+    function updatePhotoDisplay() {
+        // Clear previous display
+        capturedPhotos.innerHTML = '';
+        photoCount.textContent = photos.length;
+        remainingPhotos.textContent = 5 - photos.length;
+        
+        // Display all current photos
+        photos.forEach((photo, index) => {
+            const photoId = `photo-${index}`;
+            capturedPhotos.innerHTML += `
+                <div class="position-relative" style="width: 120px;">
+                    <img src="${photo}" class="img-thumbnail" style="width: 120px; height: 90px;">
+                    <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0" 
+                            onclick="removePhoto('${photoId}')" style="padding: 0.1rem 0.25rem;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>`;
+        });
+        
+        // Update capture button text
+        if (captureBtn.style.display !== 'none') {
+            captureBtn.innerHTML = `<i class="fas fa-camera me-2"></i>Capture Photo (Remaining: ${5 - photos.length})`;
+        }
+    }
+    
+    function resetPhotos() {
+        photos = [];
+        capturedPhotos.innerHTML = '';
+        photoCount.textContent = '0';
+        remainingPhotos.textContent = '5';
+        registerBtn.disabled = true;
+        
+        if (captureBtn.style.display !== 'none') {
+            captureBtn.disabled = false;
+            captureBtn.innerHTML = `<i class="fas fa-camera me-2"></i>Capture Photo (Remaining: 5)`;
+        }
+    }
+    
+    function stopCamera() {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            stream = null;
+        }
+        video.srcObject = null;
+        video.style.display = 'none';
+        placeholder.style.display = 'flex';
+        startBtn.style.display = 'block';
+        captureBtn.style.display = 'none';
+        photoCounter.style.display = 'none';
+        uploadBtn.disabled = false;
+    }
+    
+    // Remove photo
+    window.removePhoto = (photoId) => {
+        const index = parseInt(photoId.split('-')[1]);
+        photos.splice(index, 1);
+        updatePhotoDisplay();
+        
+        if (photos.length < 5) {
+            registerBtn.disabled = true;
+            if (captureBtn.style.display !== 'none') {
+                captureBtn.disabled = false;
+            }
+        }
+    };
+    
+    function showError(message) {
+        photoErrors.textContent = message;
+        photoErrors.style.display = 'block';
+        
+        setTimeout(() => {
+            photoErrors.style.display = 'none';
+        }, 5000);
+    }
+    
+    // Register student
+    registerForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const courseCode = document.getElementById('course').value;
+        const studentId = document.getElementById('student_id').value;
+        const studentName = document.getElementById('student_name').value;
+        
+        if (photos.length !== 5) {
+            showError('Please provide exactly 5 photos for registration');
+            return;
+        }
+        
+        try {
+            registerBtn.disabled = true;
+            registerBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Registering...';
+            
+            // Upload each photo
+            for (let i = 0; i < photos.length; i++) {
+                const blob = await fetch(photos[i])
+                    .then(res => res.blob());
+                
+                const formData = new FormData();
+                formData.append('image', blob, `face_${i}.jpg`);
+                formData.append('student_id', studentId);
+                formData.append('course_code', courseCode);
+                formData.append('student_name', studentName);
+                
+                const response = await fetch('/face-registration', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to register face');
+                }
+            }
+            
+            // Show success message
+            const successHTML = `
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <i class="fas fa-check-circle me-2"></i>
+                    Student ${studentName} (${studentId}) registered successfully in ${courseCode}!
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>`;
+            
+            document.body.insertAdjacentHTML('afterbegin', successHTML);
+            
+            // Reset form
+            registerForm.reset();
+            resetPhotos();
+            stopCamera();
+            
+        } catch (error) {
+            console.error('Error:', error);
+            showError(`Registration failed: ${error.message}`);
+        } finally {
+            registerBtn.disabled = false;
+            registerBtn.innerHTML = '<i class="fas fa-user-plus me-2"></i>Register Student';
+        }
+    });
+    
+    // Cleanup when leaving page
+    window.addEventListener('beforeunload', () => {
+        stopCamera();
+    });
+</script>
+
+{% endblock %}

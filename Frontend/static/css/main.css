@@ -1,0 +1,260 @@
+:root {
+    --aiu-blue: #0056b3;
+    --aiu-gold: #ffd700;
+    --aiu-dark-blue: #003366;
+    --aiu-light-blue: #e6f2ff;
+}
+
+/* Base styles */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+}
+
+/* Landing page styles */
+.landing-container {
+    position: relative;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.landing-background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url('../images/campus.jpg');
+    background-size: cover;
+    background-position: center;
+    filter: blur(5px);
+    z-index: -1;
+}
+
+.landing-content {
+    text-align: center;
+    color: white;
+    padding: 2rem;
+    background-color: rgba(0, 86, 179, 0.85);
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.university-logo {
+    max-height: 100px;
+    margin-bottom: 1.5rem;
+}
+
+.welcome-message h1 {
+    font-weight: 700;
+    margin-bottom: 1rem;
+    color: var(--aiu-gold);
+}
+
+.welcome-message p.lead {
+    font-size: 1.25rem;
+    margin-bottom: 2rem;
+}
+
+.action-buttons .btn {
+    padding: 0.75rem 2rem;
+    font-weight: 600;
+    border-radius: 50px;
+    transition: all 0.3s ease;
+}
+
+.action-buttons .btn-primary {
+    background-color: var(--aiu-gold);
+    border-color: var(--aiu-gold);
+    color: var(--aiu-dark-blue);
+}
+
+.action-buttons .btn-primary:hover {
+    background-color: #e6c200;
+    border-color: #e6c200;
+    transform: translateY(-2px);
+}
+
+.action-buttons .btn-outline-light:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+}
+
+/* Dashboard styles */
+.dashboard-container {
+    display: flex;
+    min-height: 100vh;
+}
+
+.dashboard-sidebar {
+    width: 280px;
+    background-color: var(--aiu-dark-blue);
+    color: white;
+    padding: 1.5rem 0;
+    position: fixed;
+    height: 100vh;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+}
+
+.sidebar-header {
+    text-align: center;
+    padding: 0 1.5rem 1.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-logo {
+    max-height: 60px;
+    margin-bottom: 1rem;
+}
+
+.sidebar-user {
+    display: flex;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.user-avatar {
+    font-size: 2.5rem;
+    margin-right: 1rem;
+    color: var(--aiu-gold);
+}
+
+.user-info h6 {
+    margin-bottom: 0.2rem;
+    font-weight: 600;
+}
+
+.user-info small {
+    opacity: 0.8;
+    font-size: 0.8rem;
+}
+
+.sidebar-menu {
+    list-style: none;
+    padding: 0;
+    margin: 1.5rem 0;
+}
+
+.menu-item {
+    padding: 0.75rem 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.menu-item a {
+    color: white;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+}
+
+.menu-item i {
+    width: 24px;
+    text-align: center;
+}
+
+.menu-item:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.menu-item.active {
+    background-color: var(--aiu-blue);
+    border-left: 4px solid var(--aiu-gold);
+}
+
+.menu-divider {
+    height: 1px;
+    background-color: rgba(255, 255, 255, 0.1);
+    margin: 1rem 0;
+}
+
+.dashboard-content {
+    flex: 1;
+    margin-left: 280px;
+    padding: 2rem;
+    background-color: #f8f9fa;
+}
+
+.dashboard-header {
+    margin-bottom: 2rem;
+}
+
+.dashboard-header h2 {
+    color: var(--aiu-dark-blue);
+    font-weight: 600;
+}
+
+.action-card {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    border: none;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+}
+
+.action-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+.action-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    color: white;
+    font-size: 1.5rem;
+}
+
+/* Animations */
+.animate__animated {
+    animation-duration: 1s;
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+    .dashboard-sidebar {
+        width: 240px;
+    }
+    
+    .dashboard-content {
+        margin-left: 240px;
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-sidebar {
+        width: 100%;
+        position: relative;
+        height: auto;
+    }
+    
+    .dashboard-content {
+        margin-left: 0;
+    }
+    
+    .landing-content {
+        padding: 1.5rem;
+        margin: 1rem;
+    }
+}
+
+#live-warnings {
+    z-index: 1000;
+    width: 100%;
+    animation: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}

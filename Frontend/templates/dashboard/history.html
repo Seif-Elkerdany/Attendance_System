@@ -1,0 +1,93 @@
+{% extends "dashboard/base.html" %}
+
+{% block dashboard_content %}
+<div class="dashboard-header">
+    <h2><i class="fas fa-history me-2"></i>Attendance History</h2>
+    <p class="text-muted">View past attendance records</p>
+</div>
+
+<div class="history-container">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Attendance Records</h5>
+            <div class="search-box">
+                <form class="d-flex">
+                    <input class="form-control me-2" type="search" placeholder="Search by course..." aria-label="Search">
+                    <button class="btn btn-outline-secondary" type="submit">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card-body">
+            {% if history %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Date & Time</th>
+                            <th>Course</th>
+                            <th>Present</th>
+                            <th>Total</th>
+                            <th>Percentage</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in history %}
+                        <tr>
+                            <td>{{ record.date }}</td>
+                            <td>{{ record.course_code }} - {{ record.course_name }}</td>
+                            <td>{{ record.present }}</td>
+                            <td>{{ record.total }}</td>
+                            <td>
+                                <div class="progress">
+                                    <div class="progress-bar bg-success" role="progressbar" 
+                                         style="width: {{ (record.present / record.total * 100) if record.total > 0 else 0 }}%" 
+                                         aria-valuenow="{{ (record.present / record.total * 100) if record.total > 0 else 0 }}" 
+                                         aria-valuemin="0" 
+                                         aria-valuemax="100">
+                                        {{ "%.1f"|format((record.present / record.total * 100) if record.total > 0 else 0) }}%
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" 
+                                        title="View Details">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" 
+                                        title="Export">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <nav aria-label="Page navigation">
+                <ul class="pagination justify-content-center">
+                    <li class="page-item disabled">
+                        <a class="page-link" href="#" tabindex="-1" aria-disabled="true">Previous</a>
+                    </li>
+                    <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                    <li class="page-item"><a class="page-link" href="#">2</a></li>
+                    <li class="page-item"><a class="page-link" href="#">3</a></li>
+                    <li class="page-item">
+                        <a class="page-link" href="#">Next</a>
+                    </li>
+                </ul>
+            </nav>
+            {% else %}
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                No attendance records found. Start by taking attendance for your class.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

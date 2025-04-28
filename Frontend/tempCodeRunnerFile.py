@@ -15,14 +15,13 @@ import io
 # Initialize Flask application
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key')
-app.config['STORAGE_PATH'] = 'AttendanceSystemData'  # Default storage path
 
 # Email configuration
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USERNAME'] = 'shrouqwaleed7@gmail.com'
-app.config['MAIL_PASSWORD'] = '---' ## your token goes here
+app.config['MAIL_PASSWORD'] = 'jsqc hgbp ijrw blyx'
 app.config['MAIL_DEFAULT_SENDER'] = 'shrouqwaleed7@gmail.com'
 mail = Mail(app)
 serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
@@ -59,21 +58,22 @@ attendance_history = []
 # Initialize face detector
 face_detector = MTCNN()
 
-# app.config['STORAGE_PATH'] = os.path.join(os.environ['USERPROFILE'], 'Desktop', 'AttendanceSystemData')
-app.config['STORAGE_PATH'] = os.path.join(os.path.expanduser('~'), 'Desktop', 'AttendanceSystemData')       # FOR LINUX
+# Set up main data folder
+MAIN_FOLDER = os.path.join(os.getcwd(), "AttendanceSystemData")
+os.makedirs(MAIN_FOLDER, exist_ok=True)
 
 class EnhancedLivenessDetector:
     def __init__(self):
         # Enhanced detection parameters
-        self.eye_ar_thresh = 0.22
-        self.eye_ar_consec_frames = 2
+        self.eye_ar_thresh = 0.22  # More sensitive eye aspect ratio threshold
+        self.eye_ar_consec_frames = 2  # Fewer frames needed to detect a blink
         self.blink_counter = 0
         self.total_blinks = 0
         self.prev_gray = None
         self.motion_frames = 0
         self.required_motion_frames = 5
-        self.min_face_confidence = 0.97
-        self.min_face_size_ratio = 0.15
+        self.min_face_confidence = 0.97  # Higher confidence threshold
+        self.min_face_size_ratio = 0.15  # Minimum face size relative to frame
         
         # Warning flags
         self.photo_warning = False
@@ -184,7 +184,7 @@ class EnhancedLivenessDetector:
 
 class AttendanceManager:
     def __init__(self):
-        self.data_folder = os.path.join(app.config['STORAGE_PATH'], "attendance_data")
+        self.data_folder = "attendance_data"
         os.makedirs(self.data_folder, exist_ok=True)
         self.courses = {}
         self.load_courses()
@@ -260,7 +260,7 @@ class AttendanceManager:
         return record
 
 def save_face_image(image, student_id, course_name):
-    course_dir = os.path.join(app.config['STORAGE_PATH'], course_name, "faces")
+    course_dir = os.path.join(MAIN_FOLDER, course_name, "faces")
     os.makedirs(course_dir, exist_ok=True)
     
     filename = f"{student_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
@@ -439,49 +439,29 @@ def face_registration():
     image_file = request.files['image']
     student_id = request.form.get('student_id')
     course_code = request.form.get('course_code')
-    student_name = request.form.get('student_name')
     
-    if not all([student_id, course_code, student_name]):
-        return jsonify({'error': 'Missing required fields'}), 400
+    if not all([student_id, course_code]):
+        return jsonify({'error': 'Missing student_id or course_code'}), 400
+    
+    nparr = np.frombuffer(image_file.read(), np.uint8)
+    image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    liveness_detector = EnhancedLivenessDetector()
+    is_live, processed_img = liveness_detector.detect_liveness(image)
+    
+    if not is_live:
+        return jsonify({
+            'error': 'Liveness check failed',
+            'reason': 'photo' if liveness_detector.photo_warning else 
+                      'no_face' if liveness_detector.no_face_warning else 
+                      'multi_face' if liveness_detector.multi_face_warning else
+                      'small_face' if liveness_detector.small_face_warning else 
+                      'no_blink_or_motion'
+        }), 400
     
     try:
-        # Read image file
-        nparr = np.frombuffer(image_file.read(), np.uint8)
-        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        image_path = save_face_image(image, student_id, course_code)
         
-        # Check image quality
-        if image is None or image.size == 0:
-            return jsonify({'error': 'Invalid image file'}), 400
-            
-        # Check image dimensions
-        if image.shape[0] < 100 or image.shape[1] < 100:
-            return jsonify({'error': 'Image too small (min 100x100 pixels)'}), 400
-        
-        # Liveness check
-        liveness_detector = EnhancedLivenessDetector()
-        is_live, processed_img = liveness_detector.detect_liveness(image)
-        
-        if not is_live:
-            return jsonify({
-                'error': 'Liveness check failed',
-                'reason': 'photo' if liveness_detector.photo_warning else 
-                          'no_face' if liveness_detector.no_face_warning else 
-                          'multi_face' if liveness_detector.multi_face_warning else
-                          'small_face' if liveness_detector.small_face_warning else 
-                          'no_blink_or_motion'
-            }), 400
-        
-        # Get storage path
-        course_dir = os.path.join(app.config['STORAGE_PATH'], course_code, "faces")
-        os.makedirs(course_dir, exist_ok=True)
-        
-        # Save image with timestamp
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"{student_id}_{timestamp}.jpg"
-        filepath = os.path.join(course_dir, filename)
-        cv2.imwrite(filepath, image)
-        
-        # Add student to course
         if course_code not in courses_db:
             courses_db[course_code] = {
                 "name": course_code,
@@ -489,19 +469,13 @@ def face_registration():
                 "professor": session['user_email']
             }
         
-        # Add student if not already registered
-        if student_id not in [s['id'] for s in courses_db[course_code]['students']]:
-            courses_db[course_code]['students'].append({
-                'id': student_id,
-                'name': student_name,
-                'registration_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            })
+        if student_id not in courses_db[course_code]['students']:
+            courses_db[course_code]['students'].append(student_id)
         
         return jsonify({
             'success': True,
-            'image_path': filepath,
+            'image_path': image_path,
             'student_id': student_id,
-            'student_name': student_name,
             'course_code': course_code
         })
     except Exception as e:
@@ -551,9 +525,9 @@ def mark_attendance_api():
     
     attendance_history.append(attendance_record)
     
-    attendance_file = os.path.join(app.config['STORAGE_PATH'], course_code, 'attendance.csv')
+    attendance_file = os.path.join(MAIN_FOLDER, course_code, 'attendance.csv')
     if session_name:
-        attendance_file = os.path.join(app.config['STORAGE_PATH'], course_code, f'attendance_{session_name}.csv')
+        attendance_file = os.path.join(MAIN_FOLDER, course_code, f'attendance_{session_name}.csv')
     
     with open(attendance_file, 'a', newline='') as f:
         writer = csv.writer(f)
@@ -617,7 +591,7 @@ def recognize_student():
                       'no_blink_or_motion'
         })
     
-    faces_dir = os.path.join(app.config['STORAGE_PATH'], course_code, "faces")
+    faces_dir = os.path.join(MAIN_FOLDER, course_code, "faces")
     recognized_students = []
     
     if os.path.exists(faces_dir):
@@ -637,6 +611,7 @@ def recognize_student():
             'success': False,
             'warning': 'no_match'
         })
+# Add these new routes to your existing app.py
 
 @app.route('/check-first-time-setup')
 @login_required
@@ -678,6 +653,84 @@ def set_storage_path():
             'error': str(e)
         }), 400
 
+# Modify the existing face_registration function
+@app.route('/face-registration', methods=['POST'])
+@login_required
+def face_registration():
+    if 'image' not in request.files:
+        return jsonify({'error': 'No image provided'}), 400
+    
+    image_file = request.files['image']
+    student_id = request.form.get('student_id')
+    course_code = request.form.get('course_code')
+    student_name = request.form.get('student_name')
+    
+    if not all([student_id, course_code, student_name]):
+        return jsonify({'error': 'Missing required fields'}), 400
+    
+    try:
+        # Read image file
+        nparr = np.frombuffer(image_file.read(), np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        # Check image quality
+        if image is None or image.size == 0:
+            return jsonify({'error': 'Invalid image file'}), 400
+            
+        # Check image dimensions
+        if image.shape[0] < 100 or image.shape[1] < 100:
+            return jsonify({'error': 'Image too small (min 100x100 pixels)'}), 400
+        
+        # Liveness check
+        liveness_detector = EnhancedLivenessDetector()
+        is_live, processed_img = liveness_detector.detect_liveness(image)
+        
+        if not is_live:
+            return jsonify({
+                'error': 'Liveness check failed',
+                'reason': 'photo' if liveness_detector.photo_warning else 
+                          'no_face' if liveness_detector.no_face_warning else 
+                          'multi_face' if liveness_detector.multi_face_warning else
+                          'small_face' if liveness_detector.small_face_warning else 
+                          'no_blink_or_motion'
+            }), 400
+        
+        # Get storage path from config
+        storage_path = app.config.get('STORAGE_PATH', 'AttendanceSystemData')
+        course_dir = os.path.join(storage_path, course_code, "faces")
+        os.makedirs(course_dir, exist_ok=True)
+        
+        # Save image with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{student_id}_{timestamp}.jpg"
+        filepath = os.path.join(course_dir, filename)
+        cv2.imwrite(filepath, image)
+        
+        # Add student to course
+        if course_code not in courses_db:
+            courses_db[course_code] = {
+                "name": course_code,
+                "students": [],
+                "professor": session['user_email']
+            }
+        
+        # Add student if not already registered
+        if student_id not in courses_db[course_code]['students']:
+            courses_db[course_code]['students'].append({
+                'id': student_id,
+                'name': student_name,
+                'registration_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            })
+        
+        return jsonify({
+            'success': True,
+            'image_path': filepath,
+            'student_id': student_id,
+            'student_name': student_name,
+            'course_code': course_code
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 @app.route('/export-attendance/<course_code>')
 @login_required
 def export_attendance(course_code):
@@ -685,9 +738,9 @@ def export_attendance(course_code):
     
     try:
         if session_name:
-            attendance_file = os.path.join(app.config['STORAGE_PATH'], course_code, f'attendance_{session_name}.csv')
+            attendance_file = os.path.join(MAIN_FOLDER, course_code, f'attendance_{session_name}.csv')
         else:
-            attendance_file = os.path.join(app.config['STORAGE_PATH'], course_code, 'attendance.csv')
+            attendance_file = os.path.join(MAIN_FOLDER, course_code, 'attendance.csv')
         
         if not os.path.exists(attendance_file):
             return jsonify({'error': 'No attendance records found'}), 404
