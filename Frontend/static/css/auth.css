@@ -1,0 +1,171 @@
+:root {
+    --aiu-blue: #0056b3;
+    --aiu-dark-blue: #003366;
+    --aiu-gold: #ffd700;
+    --aiu-light: #f8f9fa;
+    --aiu-success: #28a745;
+}
+
+.auth-wrapper {
+    min-height: 100vh;
+    background: linear-gradient(135deg, rgba(0, 86, 179, 0.9), rgba(0, 51, 102, 0.95)), 
+                url('../images/campus-blur.jpg') no-repeat center center;
+    background-size: cover;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 500px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+    transform: translateY(0);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.auth-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+}
+
+.auth-header {
+    background: var(--aiu-dark-blue);
+    padding: 2rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.auth-header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255, 215, 0, 0.1) 0%, transparent 70%);
+    animation: rotate 15s linear infinite;
+}
+
+@keyframes rotate {
+    100% { transform: rotate(360deg); }
+}
+
+.auth-header h2 {
+    color: white;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    position: relative;
+}
+
+.auth-header p {
+    color: rgba(255, 255, 255, 0.9);
+    margin-bottom: 0;
+    font-size: 0.95rem;
+    position: relative;
+}
+
+.auth-body {
+    background: white;
+    padding: 2.5rem;
+}
+
+.form-floating {
+    margin-bottom: 1.5rem;
+}
+
+.form-floating label {
+    color: #6c757d;
+    padding-left: 2.5rem;
+}
+
+.form-floating .form-control {
+    padding-left: 2.5rem;
+    height: calc(3rem + 2px);
+    border-radius: 8px;
+}
+
+.form-control:focus {
+    border-color: var(--aiu-blue);
+    box-shadow: 0 0 0 0.25rem rgba(0, 86, 179, 0.25);
+}
+
+.input-icon {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--aiu-blue);
+    z-index: 5;
+}
+
+.btn-auth {
+    border-radius: 8px;
+    padding: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    transition: all 0.3s ease;
+}
+
+.btn-primary {
+    background-color: var(--aiu-blue);
+    border-color: var(--aiu-blue);
+}
+
+.btn-primary:hover {
+    background-color: #004494;
+    border-color: #004494;
+    transform: translateY(-2px);
+}
+
+.btn-outline-light {
+    border-width: 2px;
+}
+
+.btn-outline-light:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+}
+
+.auth-footer {
+    text-align: center;
+    margin-top: 1.5rem;
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+.auth-footer a {
+    color: var(--aiu-blue);
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.auth-footer a:hover {
+    text-decoration: underline;
+}
+
+/* Animation classes */
+.fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsive adjustments */
+@media (max-width: 576px) {
+    .auth-body {
+        padding: 1.5rem;
+    }
+    
+    .auth-header {
+        padding: 1.5rem;
+    }
+}

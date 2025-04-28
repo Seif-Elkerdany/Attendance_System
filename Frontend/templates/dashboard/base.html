@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <!-- Sidebar -->
+    <div class="dashboard-sidebar">
+        <div class="sidebar-header">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="AIU Logo" class="sidebar-logo">
+            <h4>AIU Attendance</h4>
+        </div>
+        
+        <div class="sidebar-user">
+            <div class="user-avatar">
+                <i class="fas fa-user-circle"></i>
+            </div>
+            <div class="user-info">
+                <h6>{{ user_name }}</h6>
+                <small>Professor</small>
+            </div>
+        </div>
+        
+        <ul class="sidebar-menu">
+            <li class="menu-item active">
+                <a href="{{ url_for('dashboard') }}">
+                    <i class="fas fa-home me-2"></i>Dashboard
+                </a>
+            </li>
+            <li class="menu-item">
+                <a href="{{ url_for('register_students') }}">
+                    <i class="fas fa-user-plus me-2"></i>Register Students
+                </a>
+            </li>
+            <li class="menu-item">
+                <a href="{{ url_for('take_attendance_page') }}">
+                    <i class="fas fa-camera me-2"></i>Take Attendance
+                </a>
+            </li>
+            <li class="menu-item">
+                <a href="{{ url_for('attendance_history_page') }}">
+                    <i class="fas fa-history me-2"></i>Attendance History
+                </a>
+            </li>
+            <li class="menu-divider"></li>
+            <li class="menu-item">
+                <a href="{{ url_for('logout') }}">
+                    <i class="fas fa-sign-out-alt me-2"></i>Logout
+                </a>
+            </li>
+        </ul>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="dashboard-content">
+        {% block dashboard_content %}{% endblock %}
+    </div>
+</div>
+{% endblock %}

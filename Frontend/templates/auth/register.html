@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+{% endblock %}
+
+{% block title %}AIU - Professor Registration{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper">
+    <div class="auth-card fade-in">
+        <div class="auth-header">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="AIU Logo" style="height: 50px; margin-bottom: 1rem;">
+            <h2><i class="fas fa-user-plus me-2"></i>Professor Registration</h2>
+            <p>Request access to the attendance management system</p>
+        </div>
+        
+        <div class="auth-body">
+            <form method="POST" action="{{ url_for('register') }}">
+                <div class="form-floating">
+                    <i class="fas fa-user input-icon"></i>
+                    <input type="text" class="form-control" id="name" name="name" placeholder="Full Name" required>
+                    <label for="name">Full Name</label>
+                </div>
+                
+                <div class="form-floating">
+                    <i class="fas fa-envelope input-icon"></i>
+                    <input type="email" class="form-control" id="email" name="email" placeholder="name@example.com" required>
+                    <label for="email">University Email</label>
+                </div>
+                
+                <div class="form-floating">
+                    <i class="fas fa-lock input-icon"></i>
+                    <input type="password" class="form-control" id="password" name="password" placeholder="Password" required>
+                    <label for="password">Password</label>
+                </div>
+                
+                <div class="form-floating mb-4">
+                    <i class="fas fa-lock input-icon"></i>
+                    <input type="password" class="form-control" id="confirm_password" name="confirm_password" placeholder="Confirm Password" required>
+                    <label for="confirm_password">Confirm Password</label>
+                </div>
+                
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary btn-auth">
+                        <i class="fas fa-paper-plane me-2"></i>Request Access
+                    </button>
+                </div>
+                
+                <div class="auth-footer mt-4">
+                    <p>Already have an account? <a href="{{ url_for('login') }}">Login here</a></p>
+                    <p class="mt-2 small text-muted">By registering, you agree to our <a href="#">terms of service</a></p>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

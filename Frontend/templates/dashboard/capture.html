@@ -1,0 +1,810 @@
+{% extends "dashboard/base.html" %}
+
+{% block dashboard_content %}
+<div class="dashboard-header">
+    <h2><i class="fas fa-camera me-2"></i>Attendance Session</h2>
+    <p class="text-muted">Create and manage attendance sessions</p>
+</div>
+
+<div class="attendance-container">
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">New Attendance Session</h5>
+            <div>
+                <button id="export-csv" class="btn btn-sm btn-outline-secondary me-2">
+                    <i class="fas fa-file-export me-1"></i> Export CSV
+                </button>
+                <span id="attendance-status" class="badge bg-secondary">Ready</span>
+            </div>
+        </div>
+        
+        <div class="card-body">
+            <div class="row">
+                <!-- Session Setup Section -->
+                <div class="col-md-4">
+                    <div class="session-setup">
+                        <div class="mb-3">
+                            <label for="course" class="form-label">Select Course</label>
+                            <select class="form-select" id="course" required>
+                                <option value="" selected disabled>Choose course...</option>
+                                {% for code, course in courses.items() %}
+                                <option value="{{ code }}" data-students="{{ course.students|length }}">
+                                    {{ code }} - {{ course.name }} ({{ course.students|length }} students)
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="session-name" class="form-label">Session Name/Number</label>
+                            <input type="text" class="form-control" id="session-name" placeholder="e.g. Session 1, Lecture 5, etc.">
+                        </div>
+                        
+                        <button id="start-session" class="btn btn-primary w-100 mb-3">
+                            <i class="fas fa-play me-2"></i> Start Session
+                        </button>
+                        
+                        <div class="session-info card bg-light p-3 mb-3" style="display:none;">
+                            <h6>Session Info</h6>
+                            <p><strong>Course:</strong> <span id="current-course">--</span></p>
+                            <p><strong>Session:</strong> <span id="current-session">--</span></p>
+                            <p><strong>Started:</strong> <span id="session-start-time">--</span></p>
+                        </div>
+                        
+                        <div class="attendance-summary card bg-light p-3">
+                            <h6>Attendance Summary</h6>
+                            <div class="progress mb-2">
+                                <div id="attendance-progress" class="progress-bar" 
+                                     role="progressbar" style="width: 0%">0%</div>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <small id="attendance-stats" class="text-muted">0/0 attended</small>
+                                <small id="attendance-percentage" class="text-muted">0%</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Camera Section -->
+                <div class="col-md-4">
+                    <div class="camera-container">
+                        <div class="camera-controls mb-3">
+                            <button id="start-camera" class="btn btn-outline-primary me-2">
+                                <i class="fas fa-video me-2"></i> Camera
+                            </button>
+                            <button id="capture-btn" class="btn btn-success" disabled>
+                                <i class="fas fa-camera me-2"></i> Capture (Space)
+                            </button>
+                        </div>
+                        
+                        <div class="camera-preview">
+                            <video id="video" autoplay playsinline style="display:none;"></video>
+                            <canvas id="canvas" style="display:none;"></canvas>
+                            <div id="camera-placeholder" class="camera-placeholder">
+                                <i class="fas fa-camera fa-5x text-muted"></i>
+                                <p class="mt-2">Camera not active</p>
+                            </div>
+                            
+                            <!-- Detection Indicators -->
+                            <div id="detection-indicators" class="detection-indicators">
+                                <span id="face-counter" class="badge bg-dark">Faces: 0</span>
+                                <span id="liveness-status" class="badge bg-dark">Liveness: --</span>
+                                <span id="detection-status" class="badge bg-dark">Status: --</span>
+                            </div>
+                            
+                            <!-- Face Bounding Box -->
+                            <div id="face-box" class="face-box" style="display:none;"></div>
+                        </div>
+                        
+                        <!-- Warnings Container -->
+                        <div id="warnings-container" class="warnings-container mt-3"></div>
+                    </div>
+                </div>
+                
+                <!-- Results Section -->
+                <div class="col-md-4">
+                    <div class="results-container">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="mb-0"><i class="fas fa-clipboard-check me-2"></i>Results</h5>
+                            <div>
+                                <button id="end-session" class="btn btn-sm btn-outline-danger" disabled>
+                                    <i class="fas fa-stop me-1"></i> End Session
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="initial-message" class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Start a session and capture student faces to record attendance
+                        </div>
+                        
+                        <!-- Recognition Result -->
+                        <div id="recognition-result" class="recognition-result" style="display:none;">
+                            <div class="student-card">
+                                <div class="student-image-container">
+                                    <img id="student-image" src="" alt="Student Image" class="student-image">
+                                    <div class="confidence-badge">
+                                        <span id="confidence-value" class="badge bg-success">100%</span>
+                                    </div>
+                                </div>
+                                <div class="student-details">
+                                    <h5 id="student-id" class="student-id">STUDENT_ID</h5>
+                                    <div class="student-meta">
+                                        <span id="course-code" class="badge bg-primary">COURSE_CODE</span>
+                                        <span id="session-code" class="badge bg-info">SESSION</span>
+                                        <span id="attendance-time" class="text-muted">HH:MM:SS</span>
+                                    </div>
+                                    <div class="attendance-status">
+                                        <span class="badge bg-success">PRESENT</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Attendance Log -->
+                        <div class="attendance-log mt-3">
+                            <h6><i class="fas fa-history me-2"></i>Session Log</h6>
+                            <div id="attendance-log-entries" class="log-entries">
+                                <!-- Log entries will be added here dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // DOM Elements
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const startBtn = document.getElementById('start-camera');
+    const captureBtn = document.getElementById('capture-btn');
+    const courseSelect = document.getElementById('course');
+    const sessionNameInput = document.getElementById('session-name');
+    const startSessionBtn = document.getElementById('start-session');
+    const endSessionBtn = document.getElementById('end-session');
+    const placeholder = document.getElementById('camera-placeholder');
+    const warningsContainer = document.getElementById('warnings-container');
+    const faceCounter = document.getElementById('face-counter');
+    const livenessStatus = document.getElementById('liveness-status');
+    const detectionStatus = document.getElementById('detection-status');
+    const faceBox = document.getElementById('face-box');
+    const recognitionResult = document.getElementById('recognition-result');
+    const initialMessage = document.getElementById('initial-message');
+    const attendanceStatus = document.getElementById('attendance-status');
+    const logEntries = document.getElementById('attendance-log-entries');
+    const exportCsvBtn = document.getElementById('export-csv');
+    const attendanceProgress = document.getElementById('attendance-progress');
+    const attendanceStats = document.getElementById('attendance-stats');
+    const attendancePercentage = document.getElementById('attendance-percentage');
+    const sessionInfo = document.querySelector('.session-info');
+    const currentCourseSpan = document.getElementById('current-course');
+    const currentSessionSpan = document.getElementById('current-session');
+    const sessionStartTimeSpan = document.getElementById('session-start-time');
+    
+    // State variables
+    let stream = null;
+    let detectionInterval = null;
+    let currentCourse = null;
+    let currentSession = null;
+    let sessionStartTime = null;
+    let attendanceRecords = [];
+    let courseStudents = 0;
+    let isSessionActive = false;
+    
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        // Load any existing attendance records
+        loadAttendanceRecords();
+    });
+    
+    // Event Listeners
+    startBtn.addEventListener('click', toggleCamera);
+    startSessionBtn.addEventListener('click', startSession);
+    endSessionBtn.addEventListener('click', endSession);
+    captureBtn.addEventListener('click', captureAttendance);
+    courseSelect.addEventListener('change', handleCourseSelect);
+    exportCsvBtn.addEventListener('click', exportToCSV);
+    
+    // Keyboard shortcut for capture (Spacebar)
+    document.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' && !captureBtn.disabled && isSessionActive) {
+            e.preventDefault();
+            captureAttendance();
+        }
+    });
+    
+    // Functions
+    async function toggleCamera() {
+        if (stream) {
+            // Stop camera
+            stream.getTracks().forEach(track => track.stop());
+            stream = null;
+            video.srcObject = null;
+            video.style.display = 'none';
+            placeholder.style.display = 'flex';
+            startBtn.innerHTML = '<i class="fas fa-video me-2"></i> Camera';
+            captureBtn.disabled = true;
+            
+            if (detectionInterval) {
+                clearInterval(detectionInterval);
+                detectionInterval = null;
+            }
+            
+            faceBox.style.display = 'none';
+        } else {
+            // Start camera
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 720 },
+                        height: { ideal: 720 },
+                        aspectRatio: 1,
+                        facingMode: 'user' 
+                    },
+                    audio: false 
+                });
+                
+                video.srcObject = stream;
+                video.style.display = 'block';
+                placeholder.style.display = 'none';
+                startBtn.innerHTML = '<i class="fas fa-stop me-2"></i> Stop Camera';
+                captureBtn.disabled = !(currentCourse && isSessionActive);
+                
+                // Adjust video to square aspect ratio
+                video.onloadedmetadata = () => {
+                    const size = Math.min(video.videoWidth, video.videoHeight);
+                    video.style.width = '100%';
+                    video.style.height = 'auto';
+                    video.style.objectFit = 'cover';
+                };
+                
+                // Start face detection interval
+                detectionInterval = setInterval(detectFaces, 300);
+                
+            } catch (err) {
+                showWarning(`Camera Error: ${err.message}`);
+            }
+        }
+    }
+    
+    function startSession() {
+        currentCourse = courseSelect.value;
+        const sessionName = sessionNameInput.value.trim();
+        
+        if (!currentCourse) {
+            showWarning('Please select a course first');
+            return;
+        }
+        
+        if (!sessionName) {
+            showWarning('Please enter a session name/number');
+            return;
+        }
+        
+        currentSession = sessionName;
+        sessionStartTime = new Date();
+        isSessionActive = true;
+        
+        // Update UI
+        startSessionBtn.disabled = true;
+        courseSelect.disabled = true;
+        sessionNameInput.disabled = true;
+        endSessionBtn.disabled = false;
+        
+        // Show session info
+        currentCourseSpan.textContent = courseSelect.options[courseSelect.selectedIndex].text;
+        currentSessionSpan.textContent = currentSession;
+        sessionStartTimeSpan.textContent = sessionStartTime.toLocaleTimeString();
+        sessionInfo.style.display = 'block';
+        
+        // Enable capture if camera is on
+        if (stream) {
+            captureBtn.disabled = false;
+        }
+        
+        // Update status
+        attendanceStatus.textContent = 'Session Active';
+        attendanceStatus.className = 'badge bg-success';
+        
+        showSuccess('Attendance session started successfully');
+    }
+    
+    function endSession() {
+        isSessionActive = false;
+        
+        // Update UI
+        startSessionBtn.disabled = false;
+        courseSelect.disabled = false;
+        sessionNameInput.disabled = false;
+        endSessionBtn.disabled = true;
+        captureBtn.disabled = true;
+        
+        // Hide session info
+        sessionInfo.style.display = 'none';
+        
+        // Update status
+        attendanceStatus.textContent = 'Session Ended';
+        attendanceStatus.className = 'badge bg-secondary';
+        
+        showSuccess('Attendance session ended. You can export the records.');
+    }
+    
+    function handleCourseSelect() {
+        currentCourse = courseSelect.value;
+        courseStudents = parseInt(courseSelect.options[courseSelect.selectedIndex].dataset.students) || 0;
+        updateAttendanceStats();
+    }
+    
+    function detectFaces() {
+        // Simulate face detection (replace with actual detection)
+        const numFaces = Math.random() > 0.8 ? 2 : (Math.random() > 0.3 ? 1 : 0);
+        const isLive = numFaces === 1 && Math.random() > 0.3;
+        const isPositioned = numFaces === 1 && Math.random() > 0.5;
+        
+        faceCounter.textContent = `Faces: ${numFaces}`;
+        faceCounter.className = `badge ${numFaces === 1 ? 'bg-success' : 'bg-danger'}`;
+        
+        livenessStatus.textContent = `Liveness: ${isLive ? 'Live' : '--'}`;
+        livenessStatus.className = `badge ${isLive ? 'bg-success' : 'bg-warning'}`;
+        
+        if (numFaces === 1 && isLive && isPositioned) {
+            detectionStatus.textContent = 'Status: Ready';
+            detectionStatus.className = 'badge bg-success';
+            
+            // Show face box (simulated)
+            faceBox.style.display = 'block';
+            const boxSize = Math.floor(Math.random() * 50) + 150; // Random size between 150-200px
+            faceBox.style.width = `${boxSize}px`;
+            faceBox.style.height = `${boxSize}px`;
+            faceBox.style.left = `${Math.floor(Math.random() * 100) + 100}px`;
+            faceBox.style.top = `${Math.floor(Math.random() * 100) + 100}px`;
+        } else {
+            detectionStatus.textContent = 'Status: --';
+            detectionStatus.className = 'badge bg-dark';
+            faceBox.style.display = 'none';
+        }
+        
+        // Show warnings if needed
+        if (numFaces > 1) {
+            showWarning('Multiple faces detected! Please ensure only one student is in frame.');
+        } else if (numFaces === 0) {
+            showWarning('No face detected. Please position the student in frame.');
+        } else if (!isLive) {
+            showWarning('Liveness check failed. Ensure this is a real person.');
+        } else if (!isPositioned) {
+            showWarning('Please position the face in the center of the frame.');
+        } else {
+            clearWarnings();
+        }
+    }
+    
+    async function captureAttendance() {
+        if (!currentCourse || !currentSession) {
+            showWarning('Please start a session first');
+            return;
+        }
+        
+        // Check face detection status
+        const currentFaces = parseInt(faceCounter.textContent.split(':')[1].trim());
+        const isLive = livenessStatus.textContent.includes('Live');
+        const isReady = detectionStatus.textContent.includes('Ready');
+        
+        if (currentFaces === 0) {
+            showError('No face detected in the frame');
+            return;
+        }
+        
+        if (currentFaces > 1) {
+            showError('Multiple faces detected. Only one student at a time.');
+            return;
+        }
+        
+        if (!isLive) {
+            showError('Liveness check failed. Please use a real person.');
+            return;
+        }
+        
+        if (!isReady) {
+            showError('Face not properly positioned. Center the face in frame.');
+            return;
+        }
+        
+        // Simulate processing
+        captureBtn.disabled = true;
+        captureBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Processing...';
+        attendanceStatus.textContent = 'Processing';
+        attendanceStatus.className = 'badge bg-warning';
+        
+        // Simulate API call delay
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Simulate recognition result
+        const mockStudentId = `STUDENT_${Math.floor(1000 + Math.random() * 9000)}`;
+        const mockConfidence = Math.floor(80 + Math.random() * 20);
+        const timestamp = new Date().toLocaleTimeString();
+        
+        // Record attendance
+        const record = {
+            studentId: mockStudentId,
+            courseCode: currentCourse,
+            sessionName: currentSession,
+            timestamp: timestamp,
+            confidence: mockConfidence
+        };
+        
+        attendanceRecords.push(record);
+        localStorage.setItem(`attendance_${currentCourse}_${currentSession}`, JSON.stringify(attendanceRecords));
+        
+        // Display results
+        displayRecognitionResult(mockStudentId, mockConfidence, timestamp);
+        addLogEntry(mockStudentId, timestamp, mockConfidence);
+        updateAttendanceStats();
+        
+        // Reset for next capture
+        resetCaptureButton();
+    }
+    
+    function displayRecognitionResult(studentId, confidence, timestamp) {
+        document.getElementById('student-id').textContent = studentId;
+        document.getElementById('student-image').src = 'https://via.placeholder.com/150';
+        document.getElementById('confidence-value').textContent = `${confidence}%`;
+        document.getElementById('course-code').textContent = currentCourse;
+        document.getElementById('session-code').textContent = currentSession;
+        document.getElementById('attendance-time').textContent = timestamp;
+        
+        // Adjust confidence badge color
+        const confidenceBadge = document.getElementById('confidence-value');
+        confidenceBadge.className = `badge ${
+            confidence > 90 ? 'bg-success' : 
+            confidence > 75 ? 'bg-primary' : 'bg-warning'
+        }`;
+        
+        initialMessage.style.display = 'none';
+        recognitionResult.style.display = 'block';
+        
+        // Update status
+        attendanceStatus.textContent = 'Recorded';
+        attendanceStatus.className = 'badge bg-success';
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            recognitionResult.style.display = 'none';
+            initialMessage.style.display = 'block';
+        }, 5000);
+    }
+    
+    function addLogEntry(studentId, timestamp, confidence) {
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        entry.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center">
+                <span class="student-id">${studentId}</span>
+                <div>
+                    <span class="badge bg-secondary me-2">${confidence}%</span>
+                    <small class="text-muted">${timestamp}</small>
+                </div>
+            </div>
+        `;
+        logEntries.insertBefore(entry, logEntries.firstChild);
+        
+        // Limit to 10 entries
+        if (logEntries.children.length > 10) {
+            logEntries.removeChild(logEntries.lastChild);
+        }
+    }
+    
+    function updateAttendanceStats() {
+        if (!currentCourse || courseStudents === 0) return;
+        
+        const attended = attendanceRecords.filter(r => r.courseCode === currentCourse && r.sessionName === currentSession).length;
+        const percentage = Math.round((attended / courseStudents) * 100);
+        
+        attendanceProgress.style.width = `${percentage}%`;
+        attendanceProgress.textContent = `${percentage}%`;
+        attendanceStats.textContent = `${attended}/${courseStudents} attended`;
+        attendancePercentage.textContent = `${percentage}%`;
+        
+        // Set progress bar color based on percentage
+        attendanceProgress.className = `progress-bar ${
+            percentage > 75 ? 'bg-success' :
+            percentage > 50 ? 'bg-primary' :
+            percentage > 25 ? 'bg-warning' : 'bg-danger'
+        }`;
+    }
+    
+    function loadAttendanceRecords() {
+        if (!currentCourse || !currentSession) return;
+        
+        const records = localStorage.getItem(`attendance_${currentCourse}_${currentSession}`);
+        if (records) {
+            attendanceRecords = JSON.parse(records);
+            updateAttendanceStats();
+            
+            // Add last 10 records to log
+            attendanceRecords.slice(-10).reverse().forEach(record => {
+                addLogEntry(record.studentId, record.timestamp, record.confidence);
+            });
+        }
+    }
+    
+    function exportToCSV() {
+        if (!currentCourse || !currentSession || attendanceRecords.length === 0) {
+            showWarning('No attendance records to export');
+            return;
+        }
+        
+        const sessionRecords = attendanceRecords.filter(r => r.courseCode === currentCourse && r.sessionName === currentSession);
+        if (sessionRecords.length === 0) {
+            showWarning('No attendance records for current session');
+            return;
+        }
+        
+        // Create CSV content
+        let csvContent = "Student ID,Course Code,Session,Timestamp,Confidence\n";
+        sessionRecords.forEach(record => {
+            csvContent += `${record.studentId},${record.courseCode},${record.sessionName},${record.timestamp},${record.confidence}\n`;
+        });
+        
+        // Create download link
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `attendance_${currentCourse}_${currentSession}_${new Date().toISOString().slice(0,10)}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+    
+    function showWarning(message) {
+        const warning = document.createElement('div');
+        warning.className = 'alert alert-warning alert-dismissible fade show';
+        warning.innerHTML = `
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        warningsContainer.appendChild(warning);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (warning.parentNode) {
+                warning.parentNode.removeChild(warning);
+            }
+        }, 5000);
+    }
+    
+    function showSuccess(message) {
+        const success = document.createElement('div');
+        success.className = 'alert alert-success alert-dismissible fade show';
+        success.innerHTML = `
+            <i class="fas fa-check-circle me-2"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        warningsContainer.appendChild(success);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (success.parentNode) {
+                success.parentNode.removeChild(success);
+            }
+        }, 5000);
+    }
+    
+    function showError(message) {
+        attendanceStatus.textContent = 'Error';
+        attendanceStatus.className = 'badge bg-danger';
+        
+        const error = document.createElement('div');
+        error.className = 'alert alert-danger alert-dismissible fade show';
+        error.innerHTML = `
+            <i class="fas fa-times-circle me-2"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        warningsContainer.appendChild(error);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (error.parentNode) {
+                error.parentNode.removeChild(error);
+            }
+        }, 5000);
+    }
+    
+    function clearWarnings() {
+        warningsContainer.innerHTML = '';
+    }
+    
+    function resetCaptureButton() {
+        captureBtn.disabled = !isSessionActive;
+        captureBtn.innerHTML = '<i class="fas fa-camera me-2"></i> Capture (Space)';
+    }
+    
+    // Cleanup
+    window.addEventListener('beforeunload', () => {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+        }
+        if (detectionInterval) {
+            clearInterval(detectionInterval);
+        }
+    });
+</script>
+
+<style>
+    .attendance-container {
+        padding: 20px;
+    }
+    
+    .session-setup {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+    
+    .camera-container {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+    
+    .camera-preview {
+        position: relative;
+        width: 100%;
+        height: 0;
+        padding-bottom: 100%; /* Makes it square */
+        background-color: #000;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 10px;
+    }
+    
+    .camera-preview video {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .camera-placeholder {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #6c757d;
+        background-color: #f8f9fa;
+    }
+    
+    .detection-indicators {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        z-index: 10;
+    }
+    
+    .face-box {
+        position: absolute;
+        border: 3px solid #0d6efd;
+        border-radius: 50%;
+        z-index: 5;
+        pointer-events: none;
+    }
+    
+    .warnings-container {
+        min-height: 60px;
+        max-height: 120px;
+        overflow-y: auto;
+    }
+    
+    .results-container {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .recognition-result {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .student-card {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+    }
+    
+    .student-image-container {
+        position: relative;
+        width: 80px;
+        height: 80px;
+    }
+    
+    .student-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 50%;
+        border: 3px solid #0d6efd;
+    }
+    
+    .confidence-badge {
+        position: absolute;
+        bottom: -5px;
+        right: -5px;
+    }
+    
+    .student-details {
+        flex: 1;
+    }
+    
+    .student-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        align-items: center;
+        margin: 5px 0;
+    }
+    
+    .attendance-status {
+        margin-top: 5px;
+    }
+    
+    .log-entries {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 10px;
+        background-color: #f8f9fa;
+    }
+    
+    .log-entry {
+        padding: 8px 0;
+        border-bottom: 1px solid #eee;
+    }
+    
+    .log-entry:last-child {
+        border-bottom: none;
+    }
+    
+    .progress {
+        height: 24px;
+        margin-bottom: 5px;
+    }
+    
+    .progress-bar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    
+    .session-info p {
+        margin-bottom: 5px;
+    }
+    
+    .attendance-summary h6 {
+        margin-bottom: 10px;
+    }
+</style>
+
+{% endblock %}

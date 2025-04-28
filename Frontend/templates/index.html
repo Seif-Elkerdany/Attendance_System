@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="landing-container">
+    <div class="landing-background"></div>
+    <div class="landing-content">
+        <div class="logo-container">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Alamein International University" class="university-logo">
+        </div>
+        
+        <div class="welcome-message animate__animated animate__fadeIn">
+            <h1>AIU Attendance System</h1>
+            <p class="lead">Streamlining attendance management to empower educators and maximize teaching efficiency.</p>
+            
+            <div class="action-buttons">
+                <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg me-3">
+                    <i class="fas fa-sign-in-alt me-2"></i>Login
+                </a>
+                <a href="{{ url_for('register') }}" class="btn btn-outline-light btn-lg">
+                    <i class="fas fa-user-plus me-2"></i>Register
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
