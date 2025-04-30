@@ -20,12 +20,14 @@ for pkg in "${required_packages[@]}"; do
 done
 
 # go to the directory that has app.py
-cd Frontend/
+cd /home/seif_elkerdany/projects/Attendance_System
+export FLASK_APP=Frontend.app
 
+source /home/seif_elkerdany/main_ML/bin/activate main_ML
 
 # explicitly use the venv with flask
-VENV_PATH="/home/ammarkeon/Desktop/Image_Project/Code/image_venv/bin/python"
-$VENV_PATH -m flask run
+# VENV_PATH="/home/seif_elkerdany/main_ML/bin/activate main_ML"
+python3 -m flask run
 
 
 # ---- to run the file ---- 
