@@ -3,6 +3,8 @@ import cv2
 import numpy as np
 from flask import Flask, render_template, redirect, url_for, flash, request, session, jsonify, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer
 from datetime import datetime
@@ -15,55 +17,106 @@ import io
 # Initialize Flask application
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key')
-app.config['STORAGE_PATH'] = 'AttendanceSystemData'  # Default storage path
+app.config['STORAGE_PATH'] = 'C:\\Users\\shrou\\OneDrive\\Desktop\\AttendanceSystemData'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(app.config['STORAGE_PATH'], 'attendance.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Initialize extensions
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+mail = Mail(app)
+serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+face_detector = MTCNN()
+
+# Database Models
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    password = db.Column(db.String(200), nullable=False)
+    is_professor = db.Column(db.Boolean, default=False)
+    courses_taught = db.relationship('Course', backref='professor', lazy=True)
+    attendances = db.relationship('Attendance', backref='student', lazy=True)
+
+    def __repr__(self):
+        return f"User('{self.name}', '{self.email}')"
+
+class Course(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(50), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    professor_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    students = db.relationship('Student', backref='course', lazy=True)
+    sessions = db.relationship('Session', backref='course', lazy=True)
+
+    def __repr__(self):
+        return f"Course('{self.code}', '{self.name}')"
+
+class Student(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.String(50), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    face_images = db.relationship('FaceImage', backref='student', lazy=True)
+
+    def __repr__(self):
+        return f"Student('{self.student_id}', '{self.name}')"
+
+class FaceImage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    path = db.Column(db.String(200), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
+
+    def __repr__(self):
+        return f"FaceImage('{self.path}')"
+
+class Session(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    attendances = db.relationship('Attendance', backref='session', lazy=True)
+
+    def __repr__(self):
+        return f"Session('{self.name}')"
+
+class Attendance(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    method = db.Column(db.String(50), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    session_id = db.Column(db.Integer, db.ForeignKey('session.id'), nullable=True)
+
+    def __repr__(self):
+        return f"Attendance('{self.student_id}', '{self.timestamp}')"
+
+# Create base directory and database
+with app.app_context():
+    if not os.path.exists(app.config['STORAGE_PATH']):
+        os.makedirs(app.config['STORAGE_PATH'])
+    db.create_all()
+
+    # Create default professor if not exists
+    if not User.query.filter_by(email="professor@aiu.edu").first():
+        professor = User(
+            email="professor@aiu.edu",
+            name="Dr. Ahmed Mohamed",
+            password=generate_password_hash("professor123"),
+            is_professor=True
+        )
+        db.session.add(professor)
+        db.session.commit()
 
 # Email configuration
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USERNAME'] = 'shrouqwaleed7@gmail.com'
-app.config['MAIL_PASSWORD'] = '---' ## your token goes here
+app.config['MAIL_PASSWORD'] = '---'
 app.config['MAIL_DEFAULT_SENDER'] = 'shrouqwaleed7@gmail.com'
-mail = Mail(app)
-serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
-
-# Mock database
-users_db = {
-    "professor@aiu.edu": {
-        "name": "Dr. Ahmed Mohamed",
-        "password": generate_password_hash("professor123"),
-        "courses": ["CS101", "MATH202", "ENG301"]
-    }
-}
-
-courses_db = {
-    "CS101": {
-        "name": "Introduction to Computer Science",
-        "students": [],
-        "professor": "professor@aiu.edu"
-    },
-    "MATH202": {
-        "name": "Advanced Mathematics",
-        "students": [],
-        "professor": "professor@aiu.edu"
-    },
-    "ENG301": {
-        "name": "Professional English",
-        "students": [],
-        "professor": "professor@aiu.edu"
-    }
-}
-
-attendance_history = []
-
-# Initialize face detector
-face_detector = MTCNN()
-
-app.config['STORAGE_PATH'] = os.path.join(os.environ['USERPROFILE'], 'Desktop', 'AttendanceSystemData')
 
 class EnhancedLivenessDetector:
     def __init__(self):
-        # Enhanced detection parameters
         self.eye_ar_thresh = 0.22
         self.eye_ar_consec_frames = 2
         self.blink_counter = 0
@@ -73,8 +126,6 @@ class EnhancedLivenessDetector:
         self.required_motion_frames = 5
         self.min_face_confidence = 0.97
         self.min_face_size_ratio = 0.15
-        
-        # Warning flags
         self.photo_warning = False
         self.no_face_warning = False
         self.multi_face_warning = False
@@ -138,25 +189,18 @@ class EnhancedLivenessDetector:
             return False, frame
             
         landmarks = face['keypoints']
-        
-        left_eye = np.array([
-            landmarks['left_eye'],
-            [landmarks['left_eye'][0], landmarks['left_eye'][1] - 5],
-            [landmarks['left_eye'][0] - 5, landmarks['left_eye'][1]],
-            [landmarks['left_eye'][0] + 5, landmarks['left_eye'][1]],
-            [landmarks['left_eye'][0], landmarks['left_eye'][1] + 5],
-            landmarks['left_eye']
-        ])
-        
-        right_eye = np.array([
-            landmarks['right_eye'],
-            [landmarks['right_eye'][0], landmarks['right_eye'][1] - 5],
-            [landmarks['right_eye'][0] - 5, landmarks['right_eye'][1]],
-            [landmarks['right_eye'][0] + 5, landmarks['right_eye'][1]],
-            [landmarks['right_eye'][0], landmarks['right_eye'][1] + 5],
-            landmarks['right_eye']
-        ])
-        
+        left_eye = np.array([landmarks['left_eye'], [landmarks['left_eye'][0], landmarks['left_eye'][1] - 5],
+                           [landmarks['left_eye'][0] - 5, landmarks['left_eye'][1]],
+                           [landmarks['left_eye'][0] + 5, landmarks['left_eye'][1]],
+                           [landmarks['left_eye'][0], landmarks['left_eye'][1] + 5],
+                           landmarks['left_eye']])
+                        
+        right_eye = np.array([landmarks['right_eye'], [landmarks['right_eye'][0], landmarks['right_eye'][1] - 5],
+                            [landmarks['right_eye'][0] - 5, landmarks['right_eye'][1]],
+                            [landmarks['right_eye'][0] + 5, landmarks['right_eye'][1]],
+                            [landmarks['right_eye'][0], landmarks['right_eye'][1] + 5],
+                            landmarks['right_eye']])
+                        
         left_ear = self.eye_aspect_ratio(left_eye)
         right_ear = self.eye_aspect_ratio(right_eye)
         ear = (left_ear + right_ear) / 2.0
@@ -181,101 +225,57 @@ class EnhancedLivenessDetector:
         self.multi_face_warning = False
         self.small_face_warning = False
 
-class AttendanceManager:
-    def __init__(self):
-        self.data_folder = os.path.join(app.config['STORAGE_PATH'], "attendance_data")
-        os.makedirs(self.data_folder, exist_ok=True)
-        self.courses = {}
-        self.load_courses()
-
-    def load_courses(self):
-        courses_file = os.path.join(self.data_folder, "courses.csv")
-        if os.path.exists(courses_file):
-            with open(courses_file, mode='r') as file:
-                reader = csv.DictReader(file)
-                for row in reader:
-                    self.courses[row['code']] = {
-                        'name': row['name'],
-                        'professor': row['professor'],
-                        'students': []
-                    }
-
-    def save_course(self, code, name, professor):
-        self.courses[code] = {
-            'name': name,
-            'professor': professor,
-            'students': []
-        }
-        self._update_courses_file()
-
-    def _update_courses_file(self):
-        courses_file = os.path.join(self.data_folder, "courses.csv")
-        with open(courses_file, mode='w') as file:
-            writer = csv.writer(file)
-            writer.writerow(['code', 'name', 'professor'])
-            for code, data in self.courses.items():
-                writer.writerow([code, data['name'], data['professor']])
-
-    def get_course_attendance(self, course_code, session_name=None):
-        if session_name:
-            attendance_file = os.path.join(self.data_folder, f"{course_code}_{session_name}_attendance.csv")
-        else:
-            attendance_file = os.path.join(self.data_folder, f"{course_code}_attendance.csv")
-            
-        records = []
-        if os.path.exists(attendance_file):
-            with open(attendance_file, mode='r') as file:
-                reader = csv.DictReader(file)
-                records = list(reader)
-        return records
-
-    def mark_attendance(self, course_code, student_id, session_name=None, method='face'):
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        record = {
-            'student_id': student_id,
-            'timestamp': timestamp,
-            'method': method,
-            'course_code': course_code
-        }
-        
-        if session_name:
-            record['session_name'] = session_name
-            attendance_file = os.path.join(self.data_folder, f"{course_code}_{session_name}_attendance.csv")
-        else:
-            attendance_file = os.path.join(self.data_folder, f"{course_code}_attendance.csv")
-        
-        file_exists = os.path.exists(attendance_file)
-        
-        with open(attendance_file, mode='a') as file:
-            fieldnames = ['student_id', 'timestamp', 'method', 'course_code']
-            if session_name:
-                fieldnames.append('session_name')
-                
-            writer = csv.DictWriter(file, fieldnames=fieldnames)
-            if not file_exists:
-                writer.writeheader()
-            writer.writerow(record)
-        
-        return record
-
-def save_face_image(image, student_id, course_name):
-    course_dir = os.path.join(app.config['STORAGE_PATH'], course_name, "faces")
-    os.makedirs(course_dir, exist_ok=True)
+def save_face_images(images, student_id, course_code):
+    """Save multiple face images for a student in a course"""
+    base_path = os.path.join(app.config['STORAGE_PATH'], "AttendanceData", course_code, "Students", student_id)
+    os.makedirs(base_path, exist_ok=True)
     
-    filename = f"{student_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-    filepath = os.path.join(course_dir, filename)
-    cv2.imwrite(filepath, image)
+    saved_paths = []
+    for i, image in enumerate(images, start=1):
+        filename = f"{student_id}_{i}.jpg"
+        filepath = os.path.join(base_path, filename)
+        cv2.imwrite(filepath, image)
+        saved_paths.append(filepath)
     
-    return filepath
+    return saved_paths
 
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'user_email' not in session:
+        if 'user_id' not in session:
             flash('Please login to access this page', 'danger')
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
+
+def professor_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Please login to access this page', 'danger')
+            return redirect(url_for('login'))
+        user = User.query.get(session['user_id'])
+        if not user or not user.is_professor:
+            flash('Professor access required', 'danger')
+            return redirect(url_for('dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def ensure_course_folders(course_code):
+    """Ensure all required folders for a course exist"""
+    base_path = os.path.join(app.config['STORAGE_PATH'], "AttendanceData")
+    course_path = os.path.join(base_path, course_code)
+    students_path = os.path.join(course_path, "Students")
+    faces_path = os.path.join(course_path, "Faces")
+    
+    os.makedirs(students_path, exist_ok=True)
+    os.makedirs(faces_path, exist_ok=True)
+    
+    return {
+        'course_path': course_path,
+        'students_path': students_path,
+        'faces_path': faces_path
+    }
 
 @app.route('/')
 def index():
@@ -287,14 +287,16 @@ def login():
         email = request.form.get('email')
         password = request.form.get('password')
         
-        user = users_db.get(email)
+        user = User.query.filter_by(email=email).first()
         
-        if not user or not check_password_hash(user['password'], password):
+        if not user or not check_password_hash(user.password, password):
             flash('Invalid email or password', 'danger')
             return redirect(url_for('login'))
         
-        session['user_email'] = email
-        session['user_name'] = user['name']
+        session['user_id'] = user.id
+        session['user_email'] = user.email
+        session['user_name'] = user.name
+        session['is_professor'] = user.is_professor
         flash('Login successful!', 'success')
         return redirect(url_for('dashboard'))
     
@@ -307,20 +309,20 @@ def register():
         email = request.form.get('email')
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
+        is_professor = request.form.get('is_professor') == 'on'
         
         if password != confirm_password:
             flash('Passwords do not match', 'danger')
             return redirect(url_for('register'))
         
-        if email in users_db:
+        if User.query.filter_by(email=email).first():
             flash('Email already registered', 'danger')
             return redirect(url_for('register'))
         
-        users_db[email] = {
-            "name": name,
-            "password": generate_password_hash(password),
-            "courses": []
-        }
+        hashed_password = generate_password_hash(password)
+        user = User(name=name, email=email, password=hashed_password, is_professor=is_professor)
+        db.session.add(user)
+        db.session.commit()
         
         flash('Registration successful! Please login.', 'success')
         return redirect(url_for('login'))
@@ -334,7 +336,7 @@ def forgot_password():
         
     if request.method == 'POST':
         email = request.form.get('email')
-        user = users_db.get(email)
+        user = User.query.filter_by(email=email).first()
         
         if user:
             try:
@@ -343,13 +345,13 @@ def forgot_password():
                 
                 msg = Message(
                     'AIU Attendance - Password Reset',
-                    recipients=['shrouqwaleed7@gmail.com'],
+                    recipients=[email],
                     html=render_template('email/reset_password.html',
-                                      user_name=user['name'],
+                                      user_name=user.name,
                                       reset_url=reset_url)
                 )
                 mail.send(msg)
-                flash('Password reset link sent to shrouqwaleed7@gmail.com', 'success')
+                flash('Password reset link has been sent to your email', 'success')
             except Exception as e:
                 flash('Failed to send email. Please try again later.', 'danger')
             
@@ -374,8 +376,10 @@ def reset_password(token):
             flash('Passwords do not match', 'danger')
             return redirect(request.url)
         
-        if email in users_db:
-            users_db[email]['password'] = generate_password_hash(password)
+        user = User.query.filter_by(email=email).first()
+        if user:
+            user.password = generate_password_hash(password)
+            db.session.commit()
             flash('Your password has been updated successfully', 'success')
             return redirect(url_for('login'))
         else:
@@ -387,50 +391,126 @@ def reset_password(token):
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    user_email = session['user_email']
-    user = users_db.get(user_email)
+    user = User.query.get(session['user_id'])
     
-    professor_courses = {code: course for code, course in courses_db.items() 
-                         if course['professor'] == user_email}
+    if user.is_professor:
+        courses = Course.query.filter_by(professor_id=user.id).all()
+        if not courses:
+            flash('You have no courses yet. Please add courses from the "My Courses" page.', 'info')
+        
+        recent_attendances = Attendance.query.join(Course).filter(
+            Course.professor_id == user.id
+        ).order_by(Attendance.timestamp.desc()).limit(5).all()
+        
+        return render_template('dashboard/home.html', 
+                             user_name=user.name,
+                             courses=courses,
+                             history=recent_attendances)
+    else:
+        # Student dashboard
+        attendances = Attendance.query.filter_by(student_id=user.id).order_by(
+            Attendance.timestamp.desc()).limit(5).all()
+        return render_template('dashboard/student_home.html',
+                             user_name=user.name,
+                             history=attendances)
+
+@app.route('/dashboard/my-courses', methods=['GET', 'POST'])
+@login_required
+@professor_required
+def my_courses():
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'add_course':
+            course_code = request.form.get('course_code')
+            course_name = request.form.get('course_name')
+            semester = request.form.get('semester', 'Spring 2024-2025')
+            
+            if not course_code or not course_name:
+                flash('Both course code and name are required', 'danger')
+            elif Course.query.filter_by(code=course_code).first():
+                flash('Course code already exists', 'danger')
+            else:
+                course = Course(
+                    code=course_code,
+                    name=course_name,
+                    professor_id=session['user_id']
+                )
+                db.session.add(course)
+                db.session.commit()
+                ensure_course_folders(course_code)
+                flash(f'Course {course_code} added successfully', 'success')
+                
+        elif action == 'delete_course':
+            course_code = request.form.get('course_code')
+            course = Course.query.filter_by(
+                code=course_code,
+                professor_id=session['user_id']
+            ).first()
+            
+            if course:
+                db.session.delete(course)
+                db.session.commit()
+                flash(f'Course {course_code} deleted successfully', 'success')
+            else:
+                flash('Invalid course selected', 'danger')
+        
+        return redirect(url_for('my_courses'))
     
-    return render_template('dashboard/home.html', 
-                           user_name=user['name'],
-                           courses=professor_courses,
-                           history=attendance_history[:5])
+    courses = Course.query.filter_by(professor_id=session['user_id']).all()
+    return render_template('dashboard/my_courses.html',
+                         user_name=session['user_name'],
+                         courses=courses,
+                         university_email="algalia@alamein.com")
 
 @app.route('/dashboard/register-students', methods=['GET', 'POST'])
 @login_required
+@professor_required
 def register_students():
     if request.method == 'POST':
-        course_code = request.form.get('course')
+        course_id = request.form.get('course')
+        student_id = request.form.get('student_id')
         student_name = request.form.get('student_name')
         
-        if course_code in courses_db and courses_db[course_code]['professor'] == session['user_email']:
-            courses_db[course_code]['students'].append(student_name)
-            flash(f'Student {student_name} added to {course_code}', 'success')
-        else:
+        course = Course.query.filter_by(
+            id=course_id,
+            professor_id=session['user_id']
+        ).first()
+        
+        if not course:
             flash('Invalid course selected', 'danger')
+            return redirect(url_for('register_students'))
+            
+        # Add student to course
+        if not Student.query.filter_by(student_id=student_id, course_id=course.id).first():
+            student = Student(
+                student_id=student_id,
+                name=student_name,
+                course_id=course.id
+            )
+            db.session.add(student)
+            db.session.commit()
+            flash(f'Student {student_name} added to {course.code}', 'success')
+        else:
+            flash('Student ID already exists in this course', 'warning')
         
         return redirect(url_for('register_students'))
     
-    professor_courses = {code: course for code, course in courses_db.items() 
-                         if course['professor'] == session['user_email']}
-    
+    courses = Course.query.filter_by(professor_id=session['user_id']).all()
     return render_template('dashboard/register.html', 
-                           courses=professor_courses)
+                         courses=courses)
 
 @app.route('/dashboard/take-attendance', methods=['GET'])
 @login_required
+@professor_required
 def take_attendance_page():
-    user_email = session['user_email']
-    professor_courses = {code: course for code, course in courses_db.items() 
-                         if course['professor'] == user_email}
-    
+    courses = Course.query.filter_by(professor_id=session['user_id']).all()
     return render_template('dashboard/capture.html', 
-                           courses=professor_courses)
+                         courses=courses)
 
 @app.route('/face-registration', methods=['POST'])
 @login_required
+@professor_required
 def face_registration():
     if 'image' not in request.files:
         return jsonify({'error': 'No image provided'}), 400
@@ -439,92 +519,155 @@ def face_registration():
     student_id = request.form.get('student_id')
     course_code = request.form.get('course_code')
     student_name = request.form.get('student_name')
+    image_number = request.form.get('image_number', 1)
     
     if not all([student_id, course_code, student_name]):
         return jsonify({'error': 'Missing required fields'}), 400
     
+    course = Course.query.filter_by(
+        code=course_code,
+        professor_id=session['user_id']
+    ).first()
+    
+    if not course:
+        return jsonify({
+            'error': 'Course does not exist or you are not the professor',
+            'course_not_found': True
+        }), 400
+    
     try:
-        # Read image file
         nparr = np.frombuffer(image_file.read(), np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
-        # Check image quality
         if image is None or image.size == 0:
             return jsonify({'error': 'Invalid image file'}), 400
             
-        # Check image dimensions
         if image.shape[0] < 100 or image.shape[1] < 100:
             return jsonify({'error': 'Image too small (min 100x100 pixels)'}), 400
         
-        # Liveness check
-        liveness_detector = EnhancedLivenessDetector()
-        is_live, processed_img = liveness_detector.detect_liveness(image)
+        # Save the image
+        student = Student.query.filter_by(
+            student_id=student_id,
+            course_id=course.id
+        ).first()
         
-        if not is_live:
-            return jsonify({
-                'error': 'Liveness check failed',
-                'reason': 'photo' if liveness_detector.photo_warning else 
-                          'no_face' if liveness_detector.no_face_warning else 
-                          'multi_face' if liveness_detector.multi_face_warning else
-                          'small_face' if liveness_detector.small_face_warning else 
-                          'no_blink_or_motion'
-            }), 400
+        if not student:
+            student = Student(
+                student_id=student_id,
+                name=student_name,
+                course_id=course.id
+            )
+            db.session.add(student)
+            db.session.commit()
         
-        # Get storage path
-        course_dir = os.path.join(app.config['STORAGE_PATH'], course_code, "faces")
-        os.makedirs(course_dir, exist_ok=True)
+        student_folder = os.path.join(
+            app.config['STORAGE_PATH'],
+            "AttendanceData",
+            course_code,
+            "Students",
+            student_id
+        )
+        os.makedirs(student_folder, exist_ok=True)
         
-        # Save image with timestamp
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"{student_id}_{timestamp}.jpg"
-        filepath = os.path.join(course_dir, filename)
+        filename = f"{student_id}_{image_number}.jpg"
+        filepath = os.path.join(student_folder, filename)
         cv2.imwrite(filepath, image)
         
-        # Add student to course
-        if course_code not in courses_db:
-            courses_db[course_code] = {
-                "name": course_code,
-                "students": [],
-                "professor": session['user_email']
-            }
-        
-        # Add student if not already registered
-        if student_id not in [s['id'] for s in courses_db[course_code]['students']]:
-            courses_db[course_code]['students'].append({
-                'id': student_id,
-                'name': student_name,
-                'registration_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            })
+        # Save path to database
+        face_image = FaceImage(path=filepath, student_id=student.id)
+        db.session.add(face_image)
+        db.session.commit()
         
         return jsonify({
             'success': True,
             'image_path': filepath,
             'student_id': student_id,
             'student_name': student_name,
-            'course_code': course_code
+            'course_code': course_code,
+            'image_number': image_number
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/check-course-folders/<course_code>')
+@login_required
+@professor_required
+def check_course_folders(course_code):
+    messages = []
+    base_path = os.path.join(app.config['STORAGE_PATH'], "AttendanceData")
+    course_path = os.path.join(base_path, course_code)
+    students_path = os.path.join(course_path, "Students")
+    faces_path = os.path.join(course_path, "Faces")
+    
+    paths = {
+        'base_path': base_path,
+        'course_path': course_path,
+        'students_path': students_path,
+        'faces_path': faces_path
+    }
+    
+    for name, path in paths.items():
+        if not os.path.exists(path):
+            os.makedirs(path)
+            messages.append(f"Created folder: {path}")
+        else:
+            messages.append(f"Folder exists: {path}")
+    
+    return jsonify({
+        'course': course_code,
+        'messages': messages,
+        'storage_path': app.config['STORAGE_PATH']
+    })
+# ------------------ MODEL INFERENCE METHOD ------------------
+# This method uses the trained Siamese Neural Network (SNN) model
+# to compare the uploaded face image with stored student images
+# to identify the student by face matching.
+
+def compare_faces(img, course_code):
+    """
+    Compare a face image with student images for a specific course
+    using a trained Siamese Neural Network model.
+    
+    Returns:
+        student_id (str) if a match is found, otherwise None.
+    """
+    face_tensor = _preprocess_array(img).unsqueeze(0).to(device)
+    student_folder = os.path.join(app.config['STORAGE_PATH'], "AttendanceData", course_code, "Students")
+    
+    for fname in os.listdir(student_folder):
+        path = os.path.join(student_folder, fname)
+        try:
+            stud_tensor = _load_image(path).unsqueeze(0).to(device)
+        except Exception:
+            continue
+        
+       
+       ## probs, preds = MODEL.predict(face_tensor, stud_tensor)
+        if preds.item():
+            sid = os.path.splitext(fname)[0].split('_')[0]
+            return sid
+    return None
 
 @app.route('/mark-attendance', methods=['POST'])
 @login_required
 def mark_attendance_api():
     if 'image' not in request.files:
         return jsonify({'error': 'No image provided'}), 400
-    
+
     image_file = request.files['image']
     course_code = request.form.get('course_code')
     session_name = request.form.get('session_name')
-    
-    if not course_code:
-        return jsonify({'error': 'Missing course_code'}), 400
-    
+
+    course = Course.query.filter_by(code=course_code).first()
+    if not course:
+        return jsonify({'error': 'Invalid course code'}), 400
+
     nparr = np.frombuffer(image_file.read(), np.uint8)
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    
+
     liveness_detector = EnhancedLivenessDetector()
     is_live, processed_img = liveness_detector.detect_liveness(image)
-    
+
     if not is_live:
         return jsonify({
             'error': 'Liveness check failed',
@@ -534,37 +677,51 @@ def mark_attendance_api():
                       'small_face' if liveness_detector.small_face_warning else 
                       'no_blink_or_motion'
         }), 400
-    
-    recognized_student_id = "STUDENT_" + str(uuid.uuid4())[:8]
-    
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    attendance_record = {
-        'course_code': course_code,
-        'timestamp': timestamp,
-        'student_id': recognized_student_id,
-        'method': 'face'
-    }
-    
+
+    student_sid = compare_faces(image, course_code)
+    if not student_sid:
+        return jsonify({'error': 'Student not recognized'}), 400
+
+    student_obj = Student.query.filter_by(student_id=student_sid, course_id=course.id).first()
+    if not student_obj:
+        return jsonify({'error': 'Student not found in course'}), 400
+
+    user = User.query.filter_by(name=student_obj.name).first()
+    if not user:
+        return jsonify({'error': 'User record not found'}), 400
+
+    session_obj = None
     if session_name:
-        attendance_record['session_name'] = session_name
-    
-    attendance_history.append(attendance_record)
-    
-    attendance_file = os.path.join(app.config['STORAGE_PATH'], course_code, 'attendance.csv')
-    if session_name:
-        attendance_file = os.path.join(app.config['STORAGE_PATH'], course_code, f'attendance_{session_name}.csv')
-    
-    with open(attendance_file, 'a', newline='') as f:
-        writer = csv.writer(f)
-        if session_name:
-            writer.writerow([recognized_student_id, timestamp, session_name])
-        else:
-            writer.writerow([recognized_student_id, timestamp])
-    
+        session_obj = Session.query.filter_by(
+            name=session_name,
+            course_id=course.id
+        ).first()
+
+        if not session_obj:
+            session_obj = Session(name=session_name, course_id=course.id)
+            db.session.add(session_obj)
+            db.session.commit()
+
+    attendance = Attendance(
+        method='face',
+        student_id=user.id,
+        course_id=course.id,
+        session_id=session_obj.id if session_obj else None
+    )
+    db.session.add(attendance)
+    db.session.commit()
+
     return jsonify({
         'success': True,
-        'attendance_record': attendance_record
+        'attendance_record': {
+            'student_id': user.id,
+            'student_name': user.name,
+            'course_code': course.code,
+            'timestamp': attendance.timestamp.isoformat(),
+            'session_name': session_name
+        }
     })
+
 
 @app.route('/check-liveness', methods=['POST'])
 def check_liveness():
@@ -591,13 +748,19 @@ def check_liveness():
 
 @app.route('/recognize-student', methods=['POST'])
 @login_required
+@professor_required
 def recognize_student():
     if 'image' not in request.files:
         return jsonify({'error': 'No image provided'}), 400
     
     course_code = request.form.get('course_code')
-    if not course_code:
-        return jsonify({'error': 'Missing course_code'}), 400
+    course = Course.query.filter_by(
+        code=course_code,
+        professor_id=session['user_id']
+    ).first()
+    
+    if not course:
+        return jsonify({'error': 'Invalid course code'}), 400
     
     image_file = request.files['image']
     nparr = np.frombuffer(image_file.read(), np.uint8)
@@ -616,100 +779,99 @@ def recognize_student():
                       'no_blink_or_motion'
         })
     
-    faces_dir = os.path.join(app.config['STORAGE_PATH'], course_code, "faces")
-    recognized_students = []
+    # In a real app, you would implement face recognition here
+    # For demo, return the first student in the course
+    student = course.students.first()
     
-    if os.path.exists(faces_dir):
-        for filename in os.listdir(faces_dir):
-            if filename.startswith("STUDENT_"):
-                student_id = filename.split("_")[1].split(".")[0]
-                recognized_students.append(student_id)
-    
-    if recognized_students:
+    if student:
+        images = [img.path for img in student.face_images]
         return jsonify({
             'success': True,
-            'students': recognized_students[:1],
-            'image_path': f"/static/faces/{course_code}/{recognized_students[0]}.jpg"
+            'student': {
+                'id': student.student_id,
+                'name': student.name,
+                'images': images
+            }
         })
-    else:
-        return jsonify({
-            'success': False,
-            'warning': 'no_match'
-        })
-
-@app.route('/check-first-time-setup')
-@login_required
-def check_first_time_setup():
-    # Check if storage path exists and is writable
-    storage_path = app.config.get('STORAGE_PATH', 'AttendanceSystemData')
-    is_first_time = not os.path.exists(storage_path) or not os.access(storage_path, os.W_OK)
     
     return jsonify({
-        'is_first_time': is_first_time,
-        'current_path': storage_path
+        'success': False,
+        'warning': 'no_match'
     })
 
-@app.route('/set-storage-path', methods=['POST'])
+@app.route('/dashboard/history')
 @login_required
-def set_storage_path():
-    try:
-        storage_path = request.json.get('storage_path', 'AttendanceSystemData')
-        
-        # Create the directory if it doesn't exist
-        os.makedirs(storage_path, exist_ok=True)
-        
-        # Test if we can write to the directory
-        test_file = os.path.join(storage_path, 'test.txt')
-        with open(test_file, 'w') as f:
-            f.write('test')
-        os.remove(test_file)
-        
-        # Save the path in app config
-        app.config['STORAGE_PATH'] = storage_path
-        
-        return jsonify({
-            'success': True,
-            'message': f'Storage path set to {storage_path}'
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
+def attendance_history_page():
+    user = User.query.get(session['user_id'])
+    
+    if user.is_professor:
+        attendances = Attendance.query.join(Course).filter(
+            Course.professor_id == user.id
+        ).order_by(Attendance.timestamp.desc()).all()
+    else:
+        attendances = Attendance.query.filter_by(
+            student_id=user.id
+        ).order_by(Attendance.timestamp.desc()).all()
+    
+    return render_template('dashboard/history.html', 
+                         history=attendances)
 
 @app.route('/export-attendance/<course_code>')
 @login_required
+@professor_required
 def export_attendance(course_code):
     session_name = request.args.get('session_name')
     
     try:
-        if session_name:
-            attendance_file = os.path.join(app.config['STORAGE_PATH'], course_code, f'attendance_{session_name}.csv')
-        else:
-            attendance_file = os.path.join(app.config['STORAGE_PATH'], course_code, 'attendance.csv')
+        course = Course.query.filter_by(
+            code=course_code,
+            professor_id=session['user_id']
+        ).first()
         
-        if not os.path.exists(attendance_file):
+        if not course:
+            return jsonify({'error': 'Course not found or unauthorized'}), 404
+            
+        query = Attendance.query.filter_by(course_id=course.id)
+        if session_name:
+            session_obj = Session.query.filter_by(
+                name=session_name,
+                course_id=course.id
+            ).first()
+            if session_obj:
+                query = query.filter_by(session_id=session_obj.id)
+        
+        records = query.join(User).add_columns(
+            User.name.label('student_name'),
+            Attendance.timestamp,
+            Attendance.method
+        ).order_by(Attendance.timestamp.desc()).all()
+        
+        if not records:
             return jsonify({'error': 'No attendance records found'}), 404
             
+        # Create CSV output
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['Student Name', 'Timestamp', 'Method', 'Session'])
+        
+        for record in records:
+            writer.writerow([
+                record.student_name,
+                record.timestamp,
+                record.method,
+                session_name if session_name else 'General'
+            ])
+        
+        output.seek(0)
+        
         return send_file(
-            attendance_file,
+            io.BytesIO(output.getvalue().encode('utf-8')),
             as_attachment=True,
             download_name=f'attendance_{course_code}_{session_name if session_name else "all"}_{datetime.now().strftime("%Y%m%d")}.csv',
             mimetype='text/csv'
         )
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-@app.route('/dashboard/history')
-@login_required
-def attendance_history_page():
-    user_email = session['user_email']
-    
-    professor_history = [record for record in attendance_history 
-                         if courses_db[record['course_code']]['professor'] == user_email]
-    
-    return render_template('dashboard/history.html', 
-                           history=professor_history)
 
 @app.route('/test-email')
 def test_email():

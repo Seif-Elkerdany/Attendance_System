@@ -27,7 +27,8 @@
                             <label for="course" class="form-label">Select Course</label>
                             <select class="form-select" id="course" required>
                                 <option value="" selected disabled>Choose course...</option>
-                                {% for code, course in courses.items() %}
+                                {% for course in courses %}
+
                                 <option value="{{ code }}" data-students="{{ course.students|length }}">
                                     {{ code }} - {{ course.name }} ({{ course.students|length }} students)
                                 </option>
