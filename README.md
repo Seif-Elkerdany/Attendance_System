@@ -56,7 +56,7 @@
     - ##### 3.3 Attendance logging
     - ##### 3.4 Save attendance records 
         - Save in CSV file format / xlsx file format
-- ### 4. Deploying as desktop application
+- ### 4. Deploying as a website
 
 ## Future updates
 - Optimize the pipeline to work on Edge devices.
