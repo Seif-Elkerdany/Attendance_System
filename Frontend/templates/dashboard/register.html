@@ -18,7 +18,7 @@
                     <select class="form-select" id="course" name="course" required>
                         <option value="" selected disabled>Select a course</option>
                         {% for course in courses %}
-                        <option value="{{ code }}">{{ code }} - {{ course.name }}</option>
+                        <option value="{{ course.code }}">{{ course.code }} - {{ course.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
