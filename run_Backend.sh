@@ -19,17 +19,17 @@ for pkg in "${required_packages[@]}"; do
     fi
 done
 
-# Set PYTHONPATH to the project root
-export PYTHONPATH=$(pwd)
-echo "PYTHONPATH set to: $PYTHONPATH"
+# go to the directory that has app.py
+cd /home/seif_elkerdany/projects/Attendance_System
+export FLASK_APP=Frontend.app
 
-# Activate your Python environment
 source /home/seif_elkerdany/main_ML/bin/activate main_ML
 
-# Run the Backend module
-echo "Starting the Attendance System..."
-python -m src.Backend
+# explicitly use the venv with flask
+# VENV_PATH="/home/seif_elkerdany/main_ML/bin/activate main_ML"
+python3 -m flask run
 
-# To run:
-# chmod +x run_Backend.sh
-# ./run_Backend.sh
+
+# ---- to run the file ---- 
+# chmod +x exec.sh
+# ./exec.sh
