@@ -28,7 +28,6 @@
                             <select class="form-select" id="course" required>
                                 <option value="" selected disabled>Choose course...</option>
                                 {% for course in courses %}
-
                                 <option value="{{ course.code }}" data-students="{{ course.students|length }}">
                                     {{ course.code }} - {{ course.name }} ({{ course.students|length }} students)
                                 </option>
@@ -89,7 +88,6 @@
                             <!-- Detection Indicators -->
                             <div id="detection-indicators" class="detection-indicators">
                                 <span id="face-counter" class="badge bg-dark">Faces: 0</span>
-                                <span id="liveness-status" class="badge bg-dark">Liveness: --</span>
                                 <span id="detection-status" class="badge bg-dark">Status: --</span>
                             </div>
                             
@@ -124,13 +122,11 @@
                             <div class="student-card">
                                 <div class="student-image-container">
                                     <img id="student-image" src="" alt="Student Image" class="student-image">
-                                    <div class="confidence-badge">
-                                        <span id="confidence-value" class="badge bg-success">100%</span>
-                                    </div>
                                 </div>
                                 <div class="student-details">
                                     <h5 id="student-id" class="student-id">STUDENT_ID</h5>
                                     <div class="student-meta">
+                                        <span id="student-name" class="badge bg-secondary">STUDENT_NAME</span>
                                         <span id="course-code" class="badge bg-primary">COURSE_CODE</span>
                                         <span id="session-code" class="badge bg-info">SESSION</span>
                                         <span id="attendance-time" class="text-muted">HH:MM:SS</span>
@@ -169,7 +165,6 @@
     const placeholder = document.getElementById('camera-placeholder');
     const warningsContainer = document.getElementById('warnings-container');
     const faceCounter = document.getElementById('face-counter');
-    const livenessStatus = document.getElementById('liveness-status');
     const detectionStatus = document.getElementById('detection-status');
     const faceBox = document.getElementById('face-box');
     const recognitionResult = document.getElementById('recognition-result');
@@ -197,7 +192,6 @@
     
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
-        // Load any existing attendance records
         loadAttendanceRecords();
     });
     
@@ -220,7 +214,6 @@
     // Functions
     async function toggleCamera() {
         if (stream) {
-            // Stop camera
             stream.getTracks().forEach(track => track.stop());
             stream = null;
             video.srcObject = null;
@@ -236,7 +229,6 @@
             
             faceBox.style.display = 'none';
         } else {
-            // Start camera
             try {
                 stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { 
@@ -254,7 +246,6 @@
                 startBtn.innerHTML = '<i class="fas fa-stop me-2"></i> Stop Camera';
                 captureBtn.disabled = !(currentCourse && isSessionActive);
                 
-                // Adjust video to square aspect ratio
                 video.onloadedmetadata = () => {
                     const size = Math.min(video.videoWidth, video.videoHeight);
                     video.style.width = '100%';
@@ -262,7 +253,6 @@
                     video.style.objectFit = 'cover';
                 };
                 
-                // Start face detection interval
                 detectionInterval = setInterval(detectFaces, 300);
                 
             } catch (err) {
@@ -289,24 +279,20 @@
         sessionStartTime = new Date();
         isSessionActive = true;
         
-        // Update UI
         startSessionBtn.disabled = true;
         courseSelect.disabled = true;
         sessionNameInput.disabled = true;
         endSessionBtn.disabled = false;
         
-        // Show session info
         currentCourseSpan.textContent = courseSelect.options[courseSelect.selectedIndex].text;
         currentSessionSpan.textContent = currentSession;
         sessionStartTimeSpan.textContent = sessionStartTime.toLocaleTimeString();
         sessionInfo.style.display = 'block';
         
-        // Enable capture if camera is on
         if (stream) {
             captureBtn.disabled = false;
         }
         
-        // Update status
         attendanceStatus.textContent = 'Session Active';
         attendanceStatus.className = 'badge bg-success';
         
@@ -316,17 +302,14 @@
     function endSession() {
         isSessionActive = false;
         
-        // Update UI
         startSessionBtn.disabled = false;
         courseSelect.disabled = false;
         sessionNameInput.disabled = false;
         endSessionBtn.disabled = true;
         captureBtn.disabled = true;
         
-        // Hide session info
         sessionInfo.style.display = 'none';
         
-        // Update status
         attendanceStatus.textContent = 'Session Ended';
         attendanceStatus.className = 'badge bg-secondary';
         
@@ -340,45 +323,26 @@
     }
     
     function detectFaces() {
-        // Simulate face detection (replace with actual detection)
-        const numFaces = Math.random() > 0.8 ? 2 : (Math.random() > 0.3 ? 1 : 0);
-        const isLive = numFaces === 1 && Math.random() > 0.3;
-        const isPositioned = numFaces === 1 && Math.random() > 0.5;
+        const numFaces = Math.random() > 0.3 ? 1 : 0;
         
         faceCounter.textContent = `Faces: ${numFaces}`;
         faceCounter.className = `badge ${numFaces === 1 ? 'bg-success' : 'bg-danger'}`;
         
-        livenessStatus.textContent = `Liveness: ${isLive ? 'Live' : '--'}`;
-        livenessStatus.className = `badge ${isLive ? 'bg-success' : 'bg-warning'}`;
-        
-        if (numFaces === 1 && isLive && isPositioned) {
+        if (numFaces === 1) {
             detectionStatus.textContent = 'Status: Ready';
             detectionStatus.className = 'badge bg-success';
             
-            // Show face box (simulated)
             faceBox.style.display = 'block';
-            const boxSize = Math.floor(Math.random() * 50) + 150; // Random size between 150-200px
+            const boxSize = 180;
             faceBox.style.width = `${boxSize}px`;
             faceBox.style.height = `${boxSize}px`;
-            faceBox.style.left = `${Math.floor(Math.random() * 100) + 100}px`;
-            faceBox.style.top = `${Math.floor(Math.random() * 100) + 100}px`;
+            faceBox.style.left = '50%';
+            faceBox.style.top = '50%';
+            faceBox.style.transform = 'translate(-50%, -50%)';
         } else {
             detectionStatus.textContent = 'Status: --';
             detectionStatus.className = 'badge bg-dark';
             faceBox.style.display = 'none';
-        }
-        
-        // Show warnings if needed
-        if (numFaces > 1) {
-            showWarning('Multiple faces detected! Please ensure only one student is in frame.');
-        } else if (numFaces === 0) {
-            showWarning('No face detected. Please position the student in frame.');
-        } else if (!isLive) {
-            showWarning('Liveness check failed. Ensure this is a real person.');
-        } else if (!isPositioned) {
-            showWarning('Please position the face in the center of the frame.');
-        } else {
-            clearWarnings();
         }
     }
     
@@ -388,110 +352,117 @@
             return;
         }
         
-        // Check face detection status
         const currentFaces = parseInt(faceCounter.textContent.split(':')[1].trim());
-        const isLive = livenessStatus.textContent.includes('Live');
-        const isReady = detectionStatus.textContent.includes('Ready');
         
         if (currentFaces === 0) {
             showError('No face detected in the frame');
             return;
         }
         
-        if (currentFaces > 1) {
-            showError('Multiple faces detected. Only one student at a time.');
-            return;
-        }
-        
-        if (!isLive) {
-            showError('Liveness check failed. Please use a real person.');
-            return;
-        }
-        
-        if (!isReady) {
-            showError('Face not properly positioned. Center the face in frame.');
-            return;
-        }
-        
-        // Simulate processing
         captureBtn.disabled = true;
         captureBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Processing...';
         attendanceStatus.textContent = 'Processing';
         attendanceStatus.className = 'badge bg-warning';
         
-        // Simulate API call delay
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        // Simulate recognition result
-        const mockStudentId = `STUDENT_${Math.floor(1000 + Math.random() * 9000)}`;
-        const mockConfidence = Math.floor(80 + Math.random() * 20);
-        const timestamp = new Date().toLocaleTimeString();
-        
-        // Record attendance
-        const record = {
-            studentId: mockStudentId,
-            courseCode: currentCourse,
-            sessionName: currentSession,
-            timestamp: timestamp,
-            confidence: mockConfidence
-        };
-        
-        attendanceRecords.push(record);
-        localStorage.setItem(`attendance_${currentCourse}_${currentSession}`, JSON.stringify(attendanceRecords));
-        
-        // Display results
-        displayRecognitionResult(mockStudentId, mockConfidence, timestamp);
-        addLogEntry(mockStudentId, timestamp, mockConfidence);
-        updateAttendanceStats();
-        
-        // Reset for next capture
-        resetCaptureButton();
+        // Send image to server for recognition
+        try {
+            const imageBlob = await captureImage();
+            const formData = new FormData();
+            formData.append('image', imageBlob, 'capture.jpg');
+            formData.append('course_code', currentCourse);
+            
+            const response = await fetch('/mark-attendance', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok && result.success) {
+                const timestamp = new Date().toLocaleTimeString();
+                const record = {
+                    studentId: result.attendance_record.student_id,
+                    studentName: result.attendance_record.student_name,
+                    courseCode: currentCourse,
+                    sessionName: currentSession,
+                    timestamp: timestamp,
+                    faceImage: result.face_image
+                };
+                
+                attendanceRecords.push(record);
+                localStorage.setItem(`attendance_${currentCourse}_${currentSession}`, JSON.stringify(attendanceRecords));
+                
+                displayRecognitionResult(
+                    record.studentId,
+                    record.studentName,
+                    timestamp,
+                    record.faceImage
+                );
+                addLogEntry(record.studentId, record.studentName, timestamp);
+                updateAttendanceStats();
+            } else {
+                showError(result.error || 'Failed to recognize student');
+            }
+        } catch (error) {
+            showError('Network error: ' + error.message);
+        } finally {
+            resetCaptureButton();
+        }
     }
     
-    function displayRecognitionResult(studentId, confidence, timestamp) {
+    async function captureImage() {
+        return new Promise((resolve) => {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            canvas.toBlob((blob) => {
+                resolve(blob);
+            }, 'image/jpeg', 0.95);
+        });
+    }
+    
+    function displayRecognitionResult(studentId, studentName, timestamp, faceImage) {
         document.getElementById('student-id').textContent = studentId;
-        document.getElementById('student-image').src = 'https://via.placeholder.com/150';
-        document.getElementById('confidence-value').textContent = `${confidence}%`;
+        document.getElementById('student-name').textContent = studentName;
+        
+        if (faceImage) {
+            document.getElementById('student-image').src = faceImage;
+        } else {
+            document.getElementById('student-image').src = 'https://via.placeholder.com/150';
+        }
+        
         document.getElementById('course-code').textContent = currentCourse;
         document.getElementById('session-code').textContent = currentSession;
         document.getElementById('attendance-time').textContent = timestamp;
         
-        // Adjust confidence badge color
-        const confidenceBadge = document.getElementById('confidence-value');
-        confidenceBadge.className = `badge ${
-            confidence > 90 ? 'bg-success' : 
-            confidence > 75 ? 'bg-primary' : 'bg-warning'
-        }`;
-        
         initialMessage.style.display = 'none';
         recognitionResult.style.display = 'block';
         
-        // Update status
         attendanceStatus.textContent = 'Recorded';
         attendanceStatus.className = 'badge bg-success';
         
-        // Auto-hide after 5 seconds
         setTimeout(() => {
             recognitionResult.style.display = 'none';
             initialMessage.style.display = 'block';
         }, 5000);
     }
     
-    function addLogEntry(studentId, timestamp, confidence) {
+    function addLogEntry(studentId, studentName, timestamp) {
         const entry = document.createElement('div');
         entry.className = 'log-entry';
         entry.innerHTML = `
             <div class="d-flex justify-content-between align-items-center">
-                <span class="student-id">${studentId}</span>
                 <div>
-                    <span class="badge bg-secondary me-2">${confidence}%</span>
-                    <small class="text-muted">${timestamp}</small>
+                    <span class="student-id">${studentId}</span>
+                    <small class="text-muted d-block">${studentName}</small>
                 </div>
+                <small class="text-muted">${timestamp}</small>
             </div>
         `;
         logEntries.insertBefore(entry, logEntries.firstChild);
         
-        // Limit to 10 entries
         if (logEntries.children.length > 10) {
             logEntries.removeChild(logEntries.lastChild);
         }
@@ -508,7 +479,6 @@
         attendanceStats.textContent = `${attended}/${courseStudents} attended`;
         attendancePercentage.textContent = `${percentage}%`;
         
-        // Set progress bar color based on percentage
         attendanceProgress.className = `progress-bar ${
             percentage > 75 ? 'bg-success' :
             percentage > 50 ? 'bg-primary' :
@@ -524,9 +494,8 @@
             attendanceRecords = JSON.parse(records);
             updateAttendanceStats();
             
-            // Add last 10 records to log
             attendanceRecords.slice(-10).reverse().forEach(record => {
-                addLogEntry(record.studentId, record.timestamp, record.confidence);
+                addLogEntry(record.studentId, record.studentName, record.timestamp);
             });
         }
     }
@@ -543,13 +512,11 @@
             return;
         }
         
-        // Create CSV content
-        let csvContent = "Student ID,Course Code,Session,Timestamp,Confidence\n";
+        let csvContent = "Student ID,Student Name,Course Code,Session,Timestamp\n";
         sessionRecords.forEach(record => {
-            csvContent += `${record.studentId},${record.courseCode},${record.sessionName},${record.timestamp},${record.confidence}\n`;
+            csvContent += `${record.studentId},${record.studentName},${record.courseCode},${record.sessionName},${record.timestamp}\n`;
         });
         
-        // Create download link
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -571,7 +538,6 @@
         `;
         warningsContainer.appendChild(warning);
         
-        // Auto-remove after 5 seconds
         setTimeout(() => {
             if (warning.parentNode) {
                 warning.parentNode.removeChild(warning);
@@ -589,7 +555,6 @@
         `;
         warningsContainer.appendChild(success);
         
-        // Auto-remove after 5 seconds
         setTimeout(() => {
             if (success.parentNode) {
                 success.parentNode.removeChild(success);
@@ -610,7 +575,6 @@
         `;
         warningsContainer.appendChild(error);
         
-        // Auto-remove after 5 seconds
         setTimeout(() => {
             if (error.parentNode) {
                 error.parentNode.removeChild(error);
@@ -618,16 +582,11 @@
         }, 5000);
     }
     
-    function clearWarnings() {
-        warningsContainer.innerHTML = '';
-    }
-    
     function resetCaptureButton() {
         captureBtn.disabled = !isSessionActive;
         captureBtn.innerHTML = '<i class="fas fa-camera me-2"></i> Capture (Space)';
     }
     
-    // Cleanup
     window.addEventListener('beforeunload', () => {
         if (stream) {
             stream.getTracks().forEach(track => track.stop());
@@ -659,7 +618,7 @@
         position: relative;
         width: 100%;
         height: 0;
-        padding-bottom: 100%; /* Makes it square */
+        padding-bottom: 100%;
         background-color: #000;
         border-radius: 8px;
         overflow: hidden;
@@ -744,12 +703,6 @@
         object-fit: cover;
         border-radius: 50%;
         border: 3px solid #0d6efd;
-    }
-    
-    .confidence-badge {
-        position: absolute;
-        bottom: -5px;
-        right: -5px;
     }
     
     .student-details {
