@@ -29,8 +29,8 @@
                                 <option value="" selected disabled>Choose course...</option>
                                 {% for course in courses %}
 
-                                <option value="{{ code }}" data-students="{{ course.students|length }}">
-                                    {{ code }} - {{ course.name }} ({{ course.students|length }} students)
+                                <option value="{{ course.code }}" data-students="{{ course.students|length }}">
+                                    {{ course.code }} - {{ course.name }} ({{ course.students|length }} students)
                                 </option>
                                 {% endfor %}
                             </select>
