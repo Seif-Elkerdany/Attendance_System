@@ -48,6 +48,7 @@ class Course(db.Model):
     professor_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     students = db.relationship('Student', backref='course', lazy=True)
     sessions = db.relationship('Session', backref='course', lazy=True)
+    semester = db.Column(db.String(100), nullable=True)
 
     def __repr__(self):
         return f"Course('{self.code}', '{self.name}')"
@@ -410,7 +411,7 @@ def dashboard():
         # Student dashboard
         attendances = Attendance.query.filter_by(student_id=user.id).order_by(
             Attendance.timestamp.desc()).limit(5).all()
-        return render_template('dashboard/student_home.html',
+        return render_template('dashboard/home.html',
                              user_name=user.name,
                              history=attendances)
 
@@ -424,6 +425,8 @@ def my_courses():
         if action == 'add_course':
             course_code = request.form.get('course_code')
             course_name = request.form.get('course_name')
+            semester = request.form.get('semester')
+
             semester = request.form.get('semester', 'Spring 2024-2025')
             
             if not course_code or not course_name:
@@ -434,6 +437,7 @@ def my_courses():
                 course = Course(
                     code=course_code,
                     name=course_name,
+                    semester=semester,
                     professor_id=session['user_id']
                 )
                 db.session.add(course)

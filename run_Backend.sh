@@ -1,4 +1,6 @@
-# Exit immediately if a command fails.
+#!/bin/bash
+
+# Exit immediately if a command fails
 set -e
 
 # Change to the directory of the script 
@@ -23,13 +25,9 @@ done
 export PYTHONPATH=$(pwd)
 echo "PYTHONPATH set to: $PYTHONPATH"
 
-# Activate your Python environment
-source /home/seif_elkerdany/main_ML/bin/activate main_ML
+# Activate your Python environment (Windows-friendly)
+source venv/scripts/activate
 
 # Run the Backend module
 echo "Starting the Attendance System..."
 python -m src.Backend
-
-# To run:
-# chmod +x run_Backend.sh
-# ./run_Backend.sh
