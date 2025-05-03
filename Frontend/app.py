@@ -773,6 +773,7 @@ def compare_faces(img, course_code):
         probs, preds = MODEL.predict(face_tensor, stud_tensor)
         if preds.item():
             sid = os.path.splitext(fname)[0].split('_')[0]
+            print(f"[MATCH FOUND] Student ID: {sid}")
             return sid
     return None
 
@@ -797,16 +798,14 @@ def mark_attendance_api():
   
     student_sid = compare_faces(image, course_code)
     
+    print(f"[QUERY] Database Query: {student_sid} {course.id}")
+
     if not student_sid:
         return jsonify({'error': 'Student not recognized'}), 400
 
     student_obj = Student.query.filter_by(student_id=student_sid, course_id=course.id).first()
     if not student_obj:
         return jsonify({'error': 'Student not found in course'}), 400
-
-    user = User.query.filter_by(name=student_obj.name).first()
-    if not user:
-        return jsonify({'error': 'User record not found'}), 400
 
     session_obj = None
     if session_name:
@@ -823,7 +822,7 @@ def mark_attendance_api():
    
     attendance = Attendance(
         method='face',
-        student_id=user.id,
+        student_id=student_sid,
         course_id=course.id,
         session_id=session_obj.id if session_obj else None
     )
@@ -833,8 +832,8 @@ def mark_attendance_api():
     return jsonify({
         'success': True,
         'attendance_record': {
-            'student_id': user.id,
-            'student_name': user.name,
+            'student_id': student_sid,
+            'student_name': student_obj.name,
             'course_code': course.code,
             'timestamp': attendance.timestamp.isoformat(),
             'session_name': session_name
