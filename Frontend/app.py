@@ -14,64 +14,21 @@ import uuid
 import csv
 import io
 
+# Initialize Flask application
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key')
-app.config['STORAGE_PATH'] = r'C:\Users\shrou\OneDrive\Desktop\AttendanceSystemData'
+app.config['STORAGE_PATH'] = 'C:\\Users\\shrou\\OneDrive\\Desktop\\AttendanceSystemData'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(app.config['STORAGE_PATH'], 'attendance.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Initialize extensions
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 mail = Mail(app)
 serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
 face_detector = MTCNN()
 
-def _load_image(path):
-    img = cv2.imread(path)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    img = cv2.resize(img, (160, 160))
-    return img
-
-def _preprocess_array(img_array):
-    rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
-    resized = cv2.resize(rgb, (160, 160))
-    return resized
-
-def detect_and_crop_face(image):
-    rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    results = face_detector.detect_faces(rgb_image)
-    
-    if not results:
-        return None
-        
-    best_face = max(results, key=lambda x: x['confidence'])
-    x, y, w, h = best_face['box']
-    
-    x = max(0, x)
-    y = max(0, y)
-    w = min(w, image.shape[1] - x)
-    h = min(h, image.shape[0] - y)
-    
-    face = image[y:y+h, x:x+w]
-    return face
-
-def save_cropped_faces(images, student_id, course_code):
-    base_path = os.path.join(app.config['STORAGE_PATH'], "AttendanceData", course_code, "Faces")
-    os.makedirs(base_path, exist_ok=True)
-    
-    saved_paths = []
-    for i, image in enumerate(images, start=1):
-        cropped_face = detect_and_crop_face(image)
-        if cropped_face is None:
-            continue
-            
-        filename = f"{student_id}_{i}.jpg"
-        filepath = os.path.join(base_path, filename)
-        cv2.imwrite(filepath, cropped_face)
-        saved_paths.append(filepath)
-    
-    return saved_paths
-
+# Database Models
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
@@ -81,6 +38,9 @@ class User(db.Model):
     courses_taught = db.relationship('Course', backref='professor', lazy=True)
     attendances = db.relationship('Attendance', backref='student', lazy=True)
 
+    def __repr__(self):
+        return f"User('{self.name}', '{self.email}')"
+
 class Course(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(50), unique=True, nullable=False)
@@ -88,6 +48,10 @@ class Course(db.Model):
     professor_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     students = db.relationship('Student', backref='course', lazy=True)
     sessions = db.relationship('Session', backref='course', lazy=True)
+    semester = db.Column(db.String(100)) 
+
+    def __repr__(self):
+        return f"Course('{self.code}', '{self.name}')"
 
 class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -96,16 +60,25 @@ class Student(db.Model):
     course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
     face_images = db.relationship('FaceImage', backref='student', lazy=True)
 
+    def __repr__(self):
+        return f"Student('{self.student_id}', '{self.name}')"
+
 class FaceImage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     path = db.Column(db.String(200), nullable=False)
     student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
+
+    def __repr__(self):
+        return f"FaceImage('{self.path}')"
 
 class Session(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
     attendances = db.relationship('Attendance', backref='session', lazy=True)
+
+    def __repr__(self):
+        return f"Session('{self.name}')"
 
 class Attendance(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -115,11 +88,16 @@ class Attendance(db.Model):
     course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
     session_id = db.Column(db.Integer, db.ForeignKey('session.id'), nullable=True)
 
+    def __repr__(self):
+        return f"Attendance('{self.student_id}', '{self.timestamp}')"
+
+# Create base directory and database
 with app.app_context():
     if not os.path.exists(app.config['STORAGE_PATH']):
         os.makedirs(app.config['STORAGE_PATH'])
     db.create_all()
 
+    # Create default professor if not exists
     if not User.query.filter_by(email="professor@aiu.edu").first():
         professor = User(
             email="professor@aiu.edu",
@@ -130,12 +108,137 @@ with app.app_context():
         db.session.add(professor)
         db.session.commit()
 
+# Email configuration
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USERNAME'] = 'shrouqwaleed7@gmail.com'
 app.config['MAIL_PASSWORD'] = '---'
 app.config['MAIL_DEFAULT_SENDER'] = 'shrouqwaleed7@gmail.com'
+
+class EnhancedLivenessDetector:
+    def __init__(self):
+        self.eye_ar_thresh = 0.22
+        self.eye_ar_consec_frames = 2
+        self.blink_counter = 0
+        self.total_blinks = 0
+        self.prev_gray = None
+        self.motion_frames = 0
+        self.required_motion_frames = 5
+        self.min_face_confidence = 0.97
+        self.min_face_size_ratio = 0.15
+        self.photo_warning = False
+        self.no_face_warning = False
+        self.multi_face_warning = False
+        self.small_face_warning = False
+
+    def eye_aspect_ratio(self, eye):
+        A = np.linalg.norm(eye[1] - eye[5])
+        B = np.linalg.norm(eye[2] - eye[4])
+        C = np.linalg.norm(eye[0] - eye[3])
+        ear = (A + B) / (2.0 * C)
+        return ear
+
+    def check_face_size(self, face_box, frame_shape):
+        x, y, w, h = face_box
+        frame_height, frame_width = frame_shape[:2]
+        face_area = w * h
+        frame_area = frame_width * frame_height
+        return (face_area / frame_area) >= self.min_face_size_ratio
+
+    def detect_motion(self, frame):
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.GaussianBlur(gray, (21, 21), 0)
+        
+        if self.prev_gray is None:
+            self.prev_gray = gray
+            return False
+            
+        frame_delta = cv2.absdiff(self.prev_gray, gray)
+        thresh = cv2.threshold(frame_delta, 25, 255, cv2.THRESH_BINARY)[1]
+        thresh = cv2.dilate(thresh, None, iterations=2)
+        
+        self.prev_gray = gray
+        
+        if np.sum(thresh) > 10000:
+            self.motion_frames += 1
+            if self.motion_frames >= self.required_motion_frames:
+                return True
+        return False
+
+    def detect_liveness(self, frame):
+        self.reset_warnings()
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = face_detector.detect_faces(rgb_frame)
+        
+        if not results:
+            self.no_face_warning = True
+            return False, frame
+            
+        if len(results) > 1:
+            self.multi_face_warning = True
+            return False, frame
+            
+        face = results[0]
+        
+        if face['confidence'] < self.min_face_confidence:
+            self.photo_warning = True
+            return False, frame
+            
+        if not self.check_face_size(face['box'], frame.shape):
+            self.small_face_warning = True
+            return False, frame
+            
+        landmarks = face['keypoints']
+        left_eye = np.array([landmarks['left_eye'], [landmarks['left_eye'][0], landmarks['left_eye'][1] - 5],
+                           [landmarks['left_eye'][0] - 5, landmarks['left_eye'][1]],
+                           [landmarks['left_eye'][0] + 5, landmarks['left_eye'][1]],
+                           [landmarks['left_eye'][0], landmarks['left_eye'][1] + 5],
+                           landmarks['left_eye']])
+                        
+        right_eye = np.array([landmarks['right_eye'], [landmarks['right_eye'][0], landmarks['right_eye'][1] - 5],
+                            [landmarks['right_eye'][0] - 5, landmarks['right_eye'][1]],
+                            [landmarks['right_eye'][0] + 5, landmarks['right_eye'][1]],
+                            [landmarks['right_eye'][0], landmarks['right_eye'][1] + 5],
+                            landmarks['right_eye']])
+                        
+        left_ear = self.eye_aspect_ratio(left_eye)
+        right_ear = self.eye_aspect_ratio(right_eye)
+        ear = (left_ear + right_ear) / 2.0
+        
+        if ear < self.eye_ar_thresh:
+            self.blink_counter += 1
+        else:
+            if self.blink_counter >= self.eye_ar_consec_frames:
+                self.total_blinks += 1
+            self.blink_counter = 0
+        
+        motion_detected = self.detect_motion(frame)
+        
+        if self.total_blinks >= 1 and motion_detected:
+            return True, frame
+            
+        return False, frame
+
+    def reset_warnings(self):
+        self.photo_warning = False
+        self.no_face_warning = False
+        self.multi_face_warning = False
+        self.small_face_warning = False
+
+def save_face_images(images, student_id, course_code):
+    """Save multiple face images for a student in a course"""
+    base_path = os.path.join(app.config['STORAGE_PATH'], "AttendanceData", course_code, "Students", student_id)
+    os.makedirs(base_path, exist_ok=True)
+    
+    saved_paths = []
+    for i, image in enumerate(images, start=1):
+        filename = f"{student_id}_{i}.jpg"
+        filepath = os.path.join(base_path, filename)
+        cv2.imwrite(filepath, image)
+        saved_paths.append(filepath)
+    
+    return saved_paths
 
 def login_required(f):
     @wraps(f)
@@ -160,6 +263,7 @@ def professor_required(f):
     return decorated_function
 
 def ensure_course_folders(course_code):
+    """Ensure all required folders for a course exist"""
     base_path = os.path.join(app.config['STORAGE_PATH'], "AttendanceData")
     course_path = os.path.join(base_path, course_code)
     students_path = os.path.join(course_path, "Students")
@@ -304,9 +408,10 @@ def dashboard():
                              courses=courses,
                              history=recent_attendances)
     else:
+        # Student dashboard
         attendances = Attendance.query.filter_by(student_id=user.id).order_by(
             Attendance.timestamp.desc()).limit(5).all()
-        return render_template('dashboard/student_home.html',
+        return render_template('dashboard/home.html',
                              user_name=user.name,
                              history=attendances)
 
@@ -320,6 +425,8 @@ def my_courses():
         if action == 'add_course':
             course_code = request.form.get('course_code')
             course_name = request.form.get('course_name')
+            semester = request.form.get('semester')
+
             semester = request.form.get('semester', 'Spring 2024-2025')
             
             if not course_code or not course_name:
@@ -330,6 +437,7 @@ def my_courses():
                 course = Course(
                     code=course_code,
                     name=course_name,
+                    semester=semester,
                     professor_id=session['user_id']
                 )
                 db.session.add(course)
@@ -377,6 +485,7 @@ def register_students():
             flash('Invalid course selected', 'danger')
             return redirect(url_for('register_students'))
             
+        # Add student to course
         if not Student.query.filter_by(student_id=student_id, course_id=course.id).first():
             student = Student(
                 student_id=student_id,
@@ -414,6 +523,7 @@ def face_registration():
     student_id = request.form.get('student_id')
     course_code = request.form.get('course_code')
     student_name = request.form.get('student_name')
+    image_number = request.form.get('image_number', 1)
     
     if not all([student_id, course_code, student_name]):
         return jsonify({'error': 'Missing required fields'}), 400
@@ -436,6 +546,10 @@ def face_registration():
         if image is None or image.size == 0:
             return jsonify({'error': 'Invalid image file'}), 400
             
+        if image.shape[0] < 100 or image.shape[1] < 100:
+            return jsonify({'error': 'Image too small (min 100x100 pixels)'}), 400
+        
+        # Save the image
         student = Student.query.filter_by(
             student_id=student_id,
             course_id=course.id
@@ -459,68 +573,84 @@ def face_registration():
         )
         os.makedirs(student_folder, exist_ok=True)
         
-        cropped_face = detect_and_crop_face(image)
-        if cropped_face is None:
-            return jsonify({'error': 'No face detected in the image'}), 400
-            
-        filename = f"{student_id}_{str(uuid.uuid4())[:8]}.jpg"
-        faces_folder = os.path.join(
-            app.config['STORAGE_PATH'],
-            "AttendanceData",
-            course_code,
-            "Faces"
-        )
-        os.makedirs(faces_folder, exist_ok=True)
-        face_path = os.path.join(faces_folder, filename)
-        cv2.imwrite(face_path, cropped_face)
+        filename = f"{student_id}_{image_number}.jpg"
+        filepath = os.path.join(student_folder, filename)
+        cv2.imwrite(filepath, image)
         
-        face_image = FaceImage(path=face_path, student_id=student.id)
+        # Save path to database
+        face_image = FaceImage(path=filepath, student_id=student.id)
         db.session.add(face_image)
         db.session.commit()
         
         return jsonify({
             'success': True,
+            'image_path': filepath,
             'student_id': student_id,
             'student_name': student_name,
             'course_code': course_code,
-            'face_image': filename
+            'image_number': image_number
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-def simple_face_recognition(image, course_code):
-    faces_folder = os.path.join(app.config['STORAGE_PATH'], "AttendanceData", course_code, "Faces")
-    if not os.path.exists(faces_folder):
-        return None
+@app.route('/check-course-folders/<course_code>')
+@login_required
+@professor_required
+def check_course_folders(course_code):
+    messages = []
+    base_path = os.path.join(app.config['STORAGE_PATH'], "AttendanceData")
+    course_path = os.path.join(base_path, course_code)
+    students_path = os.path.join(course_path, "Students")
+    faces_path = os.path.join(course_path, "Faces")
     
-    input_face = detect_and_crop_face(image)
-    if input_face is None:
-        return None
+    paths = {
+        'base_path': base_path,
+        'course_path': course_path,
+        'students_path': students_path,
+        'faces_path': faces_path
+    }
     
-    input_face = _preprocess_array(input_face)
+    for name, path in paths.items():
+        if not os.path.exists(path):
+            os.makedirs(path)
+            messages.append(f"Created folder: {path}")
+        else:
+            messages.append(f"Folder exists: {path}")
     
-    best_match = None
-    best_score = 0
+    return jsonify({
+        'course': course_code,
+        'messages': messages,
+        'storage_path': app.config['STORAGE_PATH']
+    })
+# ------------------ MODEL INFERENCE METHOD ------------------
+# This method uses the trained Siamese Neural Network (SNN) model
+# to compare the uploaded face image with stored student images
+# to identify the student by face matching.
+
+def compare_faces(img, course_code):
+    """
+    Compare a face image with student images for a specific course
+    using a trained Siamese Neural Network model.
     
-    for face_file in os.listdir(faces_folder):
-        if not face_file.endswith('.jpg'):
+    Returns:
+        student_id (str) if a match is found, otherwise None.
+    """
+    face_tensor = _preprocess_array(img).unsqueeze(0).to(device)
+    student_folder = os.path.join(app.config['STORAGE_PATH'], "AttendanceData", course_code, "Students")
+    
+    for fname in os.listdir(student_folder):
+        path = os.path.join(student_folder, fname)
+        try:
+            stud_tensor = _load_image(path).unsqueeze(0).to(device)
+        except Exception:
             continue
-            
-        student_id = face_file.split('_')[0]
         
-        stored_face_path = os.path.join(faces_folder, face_file)
-        stored_face = _load_image(stored_face_path)
-        
-        hist_input = cv2.calcHist([input_face], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
-        hist_stored = cv2.calcHist([stored_face], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
-        
-        score = cv2.compareHist(hist_input, hist_stored, cv2.HISTCMP_CORREL)
-        
-        if score > best_score:
-            best_score = score
-            best_match = student_id
-    
-    return best_match if best_score > 0.7 else None
+       
+       ## probs, preds = MODEL.predict(face_tensor, stud_tensor)
+        if preds.item():
+            sid = os.path.splitext(fname)[0].split('_')[0]
+            return sid
+    return None
 
 @app.route('/mark-attendance', methods=['POST'])
 @login_required
@@ -539,12 +669,20 @@ def mark_attendance_api():
     nparr = np.frombuffer(image_file.read(), np.uint8)
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-    rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    results = face_detector.detect_faces(rgb_image)
-    if not results:
-        return jsonify({'error': 'No face detected'}), 400
+    liveness_detector = EnhancedLivenessDetector()
+    is_live, processed_img = liveness_detector.detect_liveness(image)
 
-    student_sid = simple_face_recognition(image, course_code)
+    if not is_live:
+        return jsonify({
+            'error': 'Liveness check failed',
+            'reason': 'photo' if liveness_detector.photo_warning else 
+                      'no_face' if liveness_detector.no_face_warning else 
+                      'multi_face' if liveness_detector.multi_face_warning else
+                      'small_face' if liveness_detector.small_face_warning else 
+                      'no_blink_or_motion'
+        }), 400
+
+    student_sid = compare_faces(image, course_code)
     if not student_sid:
         return jsonify({'error': 'Student not recognized'}), 400
 
@@ -577,19 +715,92 @@ def mark_attendance_api():
     db.session.add(attendance)
     db.session.commit()
 
-    recognized_face = FaceImage.query.filter_by(student_id=student_obj.id).first()
-    face_path = recognized_face.path if recognized_face else None
-
     return jsonify({
         'success': True,
         'attendance_record': {
-            'student_id': student_obj.student_id,
-            'student_name': student_obj.name,
+            'student_id': user.id,
+            'student_name': user.name,
             'course_code': course.code,
             'timestamp': attendance.timestamp.isoformat(),
-            'session_name': session_name if session_name else 'General'
-        },
-        'face_image': face_path
+            'session_name': session_name
+        }
+    })
+
+
+@app.route('/check-liveness', methods=['POST'])
+def check_liveness():
+    if 'image' not in request.files:
+        return jsonify({'error': 'No image provided'}), 400
+    
+    nparr = np.frombuffer(request.files['image'].read(), np.uint8)
+    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    liveness_detector = EnhancedLivenessDetector()
+    is_live, _ = liveness_detector.detect_liveness(frame)
+    
+    response = {
+        'is_live': is_live,
+        'warnings': {
+            'no_face': liveness_detector.no_face_warning,
+            'multi_face': liveness_detector.multi_face_warning,
+            'photo': liveness_detector.photo_warning,
+            'small_face': liveness_detector.small_face_warning
+        }
+    }
+    
+    return jsonify(response)
+
+@app.route('/recognize-student', methods=['POST'])
+@login_required
+@professor_required
+def recognize_student():
+    if 'image' not in request.files:
+        return jsonify({'error': 'No image provided'}), 400
+    
+    course_code = request.form.get('course_code')
+    course = Course.query.filter_by(
+        code=course_code,
+        professor_id=session['user_id']
+    ).first()
+    
+    if not course:
+        return jsonify({'error': 'Invalid course code'}), 400
+    
+    image_file = request.files['image']
+    nparr = np.frombuffer(image_file.read(), np.uint8)
+    image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    liveness_detector = EnhancedLivenessDetector()
+    is_live, processed_img = liveness_detector.detect_liveness(image)
+    
+    if not is_live:
+        return jsonify({
+            'success': False,
+            'warning': 'photo' if liveness_detector.photo_warning else 
+                      'no_face' if liveness_detector.no_face_warning else 
+                      'multi_face' if liveness_detector.multi_face_warning else
+                      'small_face' if liveness_detector.small_face_warning else 
+                      'no_blink_or_motion'
+        })
+    
+    # In a real app, you would implement face recognition here
+    # For demo, return the first student in the course
+    student = course.students.first()
+    
+    if student:
+        images = [img.path for img in student.face_images]
+        return jsonify({
+            'success': True,
+            'student': {
+                'id': student.student_id,
+                'name': student.name,
+                'images': images
+            }
+        })
+    
+    return jsonify({
+        'success': False,
+        'warning': 'no_match'
     })
 
 @app.route('/dashboard/history')
@@ -642,6 +853,7 @@ def export_attendance(course_code):
         if not records:
             return jsonify({'error': 'No attendance records found'}), 404
             
+        # Create CSV output
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(['Student Name', 'Timestamp', 'Method', 'Session'])
