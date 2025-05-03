@@ -226,19 +226,68 @@ class EnhancedLivenessDetector:
         self.multi_face_warning = False
         self.small_face_warning = False
 
+
+
 def save_face_images(images, student_id, course_code):
-    """Save multiple face images for a student in a course"""
-    base_path = os.path.join(app.config['STORAGE_PATH'], "AttendanceData", course_code, "Students", student_id)
-    os.makedirs(base_path, exist_ok=True)
-    
     saved_paths = []
-    for i, image in enumerate(images, start=1):
-        filename = f"{student_id}_{i}.jpg"
-        filepath = os.path.join(base_path, filename)
-        cv2.imwrite(filepath, image)
-        saved_paths.append(filepath)
-    
-    return saved_paths
+    try:
+        student_folder = os.path.join(
+            app.config['STORAGE_PATH'],
+            "AttendanceData",
+            course_code,
+            "Students",
+            student_id
+        )
+
+        faces_folder = os.path.join(
+            app.config['STORAGE_PATH'],
+            "AttendanceData",
+            course_code,
+            "Faces"
+        )
+
+        try:
+            os.makedirs(student_folder, exist_ok=True)
+            os.makedirs(faces_folder, exist_ok=True)
+        except Exception as e:
+            print(f"Error creating folders: {e}")
+            return []
+
+        detector = MTCNN()
+
+        for i, image in enumerate(images, start=1):
+            try:
+                
+                original_path = os.path.join(student_folder, f"{student_id}_{i}.jpg")
+                cv2.imwrite(original_path, image)
+                saved_paths.append(original_path)
+
+               
+                rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                faces = detector.detect_faces(rgb_image)
+
+                for j, face in enumerate(faces, 1):
+                    x, y, w, h = face['box']
+                    x, y = max(0, x), max(0, y)
+                    cropped_face = image[y:y+h, x:x+w]
+
+                    if cropped_face.size > 0:
+                        face_path = os.path.join(
+                            faces_folder,
+                            f"{student_id}_{i}_face_{j}.jpg"
+                        )
+                        cv2.imwrite(face_path, cropped_face)
+                        saved_paths.append(face_path)
+
+            except Exception as e:
+                print(f"Error processing image {i}: {str(e)}")
+                continue
+
+        return saved_paths
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return []
+
 
 def login_required(f):
     @wraps(f)
@@ -261,22 +310,27 @@ def professor_required(f):
             return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
     return decorated_function
-
 def ensure_course_folders(course_code):
     """Ensure all required folders for a course exist"""
-    base_path = os.path.join(app.config['STORAGE_PATH'], "AttendanceData")
-    course_path = os.path.join(base_path, course_code)
-    students_path = os.path.join(course_path, "Students")
-    faces_path = os.path.join(course_path, "Faces")
-    
-    os.makedirs(students_path, exist_ok=True)
-    os.makedirs(faces_path, exist_ok=True)
-    
-    return {
-        'course_path': course_path,
-        'students_path': students_path,
-        'faces_path': faces_path
-    }
+    try:
+        base_path = os.path.join(app.config['STORAGE_PATH'], "AttendanceData")
+        course_path = os.path.join(base_path, course_code)
+        students_path = os.path.join(course_path, "Students")
+        faces_path = os.path.join(course_path, "Faces")
+        
+        os.makedirs(students_path, exist_ok=True)
+        os.makedirs(faces_path, exist_ok=True)
+        
+        print(f"Created folders: {students_path} and {faces_path}")
+        
+        return {
+            'course_path': course_path,
+            'students_path': students_path,
+            'faces_path': faces_path
+        }
+    except Exception as e:
+        print(f"Error creating folders: {e}")
+        return None
 
 @app.route('/')
 def index():
@@ -564,6 +618,7 @@ def face_registration():
             db.session.add(student)
             db.session.commit()
         
+        # Create necessary folders
         student_folder = os.path.join(
             app.config['STORAGE_PATH'],
             "AttendanceData",
@@ -571,26 +626,59 @@ def face_registration():
             "Students",
             student_id
         )
+        faces_folder = os.path.join(
+            app.config['STORAGE_PATH'],
+            "AttendanceData",
+            course_code,
+            "Faces"
+        )
         os.makedirs(student_folder, exist_ok=True)
+        os.makedirs(faces_folder, exist_ok=True)
         
+        # Save original image
         filename = f"{student_id}_{image_number}.jpg"
-        filepath = os.path.join(student_folder, filename)
-        cv2.imwrite(filepath, image)
+        original_path = os.path.join(student_folder, filename)
+        cv2.imwrite(original_path, image)
         
-        # Save path to database
-        face_image = FaceImage(path=filepath, student_id=student.id)
+        # Detect and save cropped faces
+        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        detector = MTCNN()
+        faces = detector.detect_faces(rgb_image)
+        face_paths = []
+        
+        for i, face in enumerate(faces, 1):
+            x, y, w, h = face['box']
+            x, y = max(0, x), max(0, y)
+            cropped_face = image[y:y+h, x:x+w]
+            
+            if cropped_face.size > 0:
+                face_filename = f"{student_id}_{image_number}_face_{i}.jpg"
+                face_path = os.path.join(faces_folder, face_filename)
+                cv2.imwrite(face_path, cropped_face)
+                face_paths.append(face_path)
+        
+        # Save paths to database
+        face_image = FaceImage(path=original_path, student_id=student.id)
         db.session.add(face_image)
+        
+        for path in face_paths:
+            face_image = FaceImage(path=path, student_id=student.id)
+            db.session.add(face_image)
+            
         db.session.commit()
         
         return jsonify({
             'success': True,
-            'image_path': filepath,
+            'original_image_path': original_path,
+            'face_paths': face_paths,
             'student_id': student_id,
             'student_name': student_name,
             'course_code': course_code,
-            'image_number': image_number
+            'image_number': image_number,
+            'faces_detected': len(faces)
         })
     except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/check-course-folders/<course_code>')
@@ -636,7 +724,7 @@ def compare_faces(img, course_code):
         student_id (str) if a match is found, otherwise None.
     """
     face_tensor = _preprocess_array(img).unsqueeze(0).to(device)
-    student_folder = os.path.join(app.config['STORAGE_PATH'], "AttendanceData", course_code, "Students")
+    student_folder = os.path.join(app.config['STORAGE_PATH'], "AttendanceData", course_code, "faces")
     
     for fname in os.listdir(student_folder):
         path = os.path.join(student_folder, fname)
@@ -653,11 +741,12 @@ def compare_faces(img, course_code):
     return None
 
 @app.route('/mark-attendance', methods=['POST'])
-@login_required
+
 def mark_attendance_api():
     if 'image' not in request.files:
         return jsonify({'error': 'No image provided'}), 400
-
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
     image_file = request.files['image']
     course_code = request.form.get('course_code')
     session_name = request.form.get('session_name')
@@ -669,19 +758,7 @@ def mark_attendance_api():
     nparr = np.frombuffer(image_file.read(), np.uint8)
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-    liveness_detector = EnhancedLivenessDetector()
-    is_live, processed_img = liveness_detector.detect_liveness(image)
-
-    if not is_live:
-        return jsonify({
-            'error': 'Liveness check failed',
-            'reason': 'photo' if liveness_detector.photo_warning else 
-                      'no_face' if liveness_detector.no_face_warning else 
-                      'multi_face' if liveness_detector.multi_face_warning else
-                      'small_face' if liveness_detector.small_face_warning else 
-                      'no_blink_or_motion'
-        }), 400
-
+  
     student_sid = compare_faces(image, course_code)
     if not student_sid:
         return jsonify({'error': 'Student not recognized'}), 400
@@ -706,6 +783,7 @@ def mark_attendance_api():
             db.session.add(session_obj)
             db.session.commit()
 
+   
     attendance = Attendance(
         method='face',
         student_id=user.id,
@@ -750,7 +828,7 @@ def check_liveness():
     
     return jsonify(response)
 
-@app.route('/recognize-student', methods=['POST'])
+"""@app.route('/recognize-student', methods=['POST'])
 @login_required
 @professor_required
 def recognize_student():
@@ -801,7 +879,7 @@ def recognize_student():
     return jsonify({
         'success': False,
         'warning': 'no_match'
-    })
+    })"""
 
 @app.route('/dashboard/history')
 @login_required
