@@ -13,13 +13,49 @@ from mtcnn.mtcnn import MTCNN
 import uuid
 import csv
 import io
+import torch 
+import torchvision.transforms.functional as TF
+from modeling.model.NN_B3 import SiameseClassifier
 
 # Initialize Flask application
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key')
-app.config['STORAGE_PATH'] = 'C:\\Users\\shrou\\OneDrive\\Desktop\\AttendanceSystemData'
+app.config['STORAGE_PATH'] = '/home/seif_elkerdany/Desktop/AttendanceSystem'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(app.config['STORAGE_PATH'], 'attendance.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+def _load_image(path):
+    img = cv2.imread(path)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = cv2.resize(img, (160, 160))
+    tensor = TF.to_tensor(img)
+    tensor = TF.normalize(tensor, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+    return tensor
+
+# For captured face arrays (not from disk)
+
+def _preprocess_array(img_array):
+    # img_array: HxWx3 BGR
+    rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
+    resized = cv2.resize(rgb, (160, 160))
+    tensor = TF.to_tensor(resized)
+    tensor = TF.normalize(tensor, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+    return tensor
+
+# Model loading
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+MODEL = SiameseClassifier(embedding_dim=256).to(device)
+ckpt_path = "/home/seif_elkerdany/projects/modeling/model/checkpoints/B3.1/checkpoint_epoch1.pt"
+ckpt = torch.load(ckpt_path, map_location=device)
+state_dict = ckpt.get("model_state_dict", ckpt)
+
+cleaned = {
+    (k.replace("module.", "") if k.startswith("module.") else k): v
+    for k, v in state_dict.items()
+}
+MODEL.load_state_dict(cleaned)
+MODEL.eval()
 
 # Initialize extensions
 db = SQLAlchemy(app)
@@ -724,7 +760,7 @@ def compare_faces(img, course_code):
         student_id (str) if a match is found, otherwise None.
     """
     face_tensor = _preprocess_array(img).unsqueeze(0).to(device)
-    student_folder = os.path.join(app.config['STORAGE_PATH'], "AttendanceData", course_code, "faces")
+    student_folder = os.path.join(app.config['STORAGE_PATH'], "AttendanceData", course_code, "Faces")
     
     for fname in os.listdir(student_folder):
         path = os.path.join(student_folder, fname)
@@ -734,7 +770,7 @@ def compare_faces(img, course_code):
             continue
         
        
-       ## probs, preds = MODEL.predict(face_tensor, stud_tensor)
+        probs, preds = MODEL.predict(face_tensor, stud_tensor)
         if preds.item():
             sid = os.path.splitext(fname)[0].split('_')[0]
             return sid
@@ -760,6 +796,7 @@ def mark_attendance_api():
 
   
     student_sid = compare_faces(image, course_code)
+    
     if not student_sid:
         return jsonify({'error': 'Student not recognized'}), 400
 
