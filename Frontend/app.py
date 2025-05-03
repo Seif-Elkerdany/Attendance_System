@@ -127,6 +127,10 @@ class Attendance(db.Model):
     def __repr__(self):
         return f"Attendance('{self.student_id}', '{self.timestamp}')"
 
+    @property
+    def total(self):
+        return Session.query.filter_by(course_id=self.course_id).count()
+
 # Create base directory and database
 with app.app_context():
     if not os.path.exists(app.config['STORAGE_PATH']):
