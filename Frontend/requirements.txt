@@ -28,7 +28,7 @@ jsmin==3.0.1
 flask-login==0.5.0
 flask-wtf==1.0.0
 
-# Database (if you add database support later)
-# sqlalchemy==1.4.23
-# flask-sqlalchemy==2.5.1
+# Database 
+sqlalchemy==1.4.23
+flask-sqlalchemy==2.5.1
 
